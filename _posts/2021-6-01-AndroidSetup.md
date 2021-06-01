@@ -7,7 +7,7 @@ tags: [Android,Setup]
 
 I've been meaning to learn some android exploitation for quite sometime now. In this post , I propose to document the method of setting up a proper debugging environment (for self reference too) to debug android applications with the good old GDB.
 
-# Pre-requisites
+## Pre-requisites
 
 + Download and install latest version of Android Studio by following this wonderful [blog](https://linuxize.com/post/how-to-install-android-studio-on-ubuntu-18-04/).
 
@@ -15,7 +15,7 @@ I've been meaning to learn some android exploitation for quite sometime now. In 
 
 Now that everything is ready and set , let's get to some business.
 
-# Making system writeable
+## Making system writeable
 
 To run `gdbserver` on our device , we need to first make the `/system` folder writeable, by default , it is read-only.
 
@@ -79,7 +79,7 @@ mount -o rw,remount /system
 mount -o rw,remount /
 ```
 
-# Setting up the gdbserver
+## Setting up the gdbserver
 
 Verify the architecture of your connected device with `uname -m` inside the adb shell.
 
