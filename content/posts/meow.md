@@ -1,7 +1,7 @@
 ---
 layout: "post"
 title: "Meow Meow zeropts 2020"
-date: 2021-3-04
+date: 2021-03-04
 tags: [Linux Kernel,Kernel Heap,SMEP,SMAP,KPTI]
 ---
 

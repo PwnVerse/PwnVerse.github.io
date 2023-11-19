@@ -1,4 +1,7 @@
-+++ title = "AFL Internals" date = "2021-11-11" +++
++++
+title = "AFL Internals"
+date = "2021-11-11"
++++
 
 I've been using AFL for quite sometime now, but really wanted to know how it works internally. This blog post is solely meant as a means of documentation for whatever I've learnt and I'd be glad if it helps someone else too.
 

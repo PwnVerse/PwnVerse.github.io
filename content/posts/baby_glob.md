@@ -1,8 +1,6 @@
-+++ title = "Setting up debugging on Android" date = "2021-06-01" +++
-
 ---
 title: Baby Glob - InCTF Internationals 2021
-date: 2021-08-17 12:00:00
+date: 2021-08-17
 categories:
   - Pwn
 tags:

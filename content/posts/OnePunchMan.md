@@ -1,7 +1,7 @@
 ---
 layout: "post"
 title: "Hitcon 2019 OnePunchMan Writeup"
-date: 2020-5-28
+date: 2020-05-28
 exerpt: "House of Lore ,Tricky Tcache corruption on glibc 2.29 and ROP on Heap"
 tags: [Heap, Glibc]
 ---

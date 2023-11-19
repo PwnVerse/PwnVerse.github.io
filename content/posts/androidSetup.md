@@ -1,4 +1,7 @@
-+++ title = "Setting up debugging on Android" date = "2021-06-01" +++
++++
+title = "Setting up debugging on Android"
+date = "2021-06-01" 
++++
 
 I've been meaning to learn some android exploitation for quite sometime now. In this post , I propose to document the method of setting up a proper debugging environment (for self reference too) to debug android applications with the good old GDB.
 

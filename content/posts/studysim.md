@@ -1,7 +1,7 @@
 ---
 layout: "post"
 title: "HSCTF 2020 Studysim Writeup"
-date: 2020-6-04
+date: 2020-06-04
 tags: [Heap, tcache, CTF]
 ---
 

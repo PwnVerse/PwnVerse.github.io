@@ -1,5 +1,5 @@
-base_url = "https://not-matthias.github.io"
-title = "not-matthias"
+base_url = "https://pwnverse.github.io"
+title = "Cyb0rG's Home"
 build_search_index = true
 generate_feed = true
 minify_html = true
@@ -21,15 +21,15 @@ menu = [
 ]
 
 socials = [
-    { name = "twitter", url = "https://twitter.com/not_matthias", icon = "twitter" },
-    { name = "github", url = "https://github.com/not-matthias/", icon = "github" },
+    { name = "twitter", url = "https://twitter.com/_Cyb0rG", icon = "twitter" },
+    { name = "github", url = "https://github.com/PwnVerse/", icon = "github" },
 ]
 
 [extra.analytics]
 enabled = true
 
 [extra.analytics.goatcounter]
-user = "not-matthias"
+user = "Cyb0rG"
 
 [extra.analytics.umami]
 website_id = "74344cd8-1e87-4c38-8acd-f96049b8f07e"

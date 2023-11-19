@@ -1,7 +1,7 @@
 ---
 layout: "post"
 title: UAF - HackTheBox 2020
-date: 2020-11-22 24:00:00
+date: 2020-11-22
 tags: [Heap, tcache dup to stack, CTF]
 ---
 

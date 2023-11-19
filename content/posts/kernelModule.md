@@ -1,7 +1,7 @@
 ---
 layout: "post"
 title: "Kernel Module Programming - 1"
-date: 2020-8-27
+date: 2020-08-27
 excerpt: ""
 ---
 

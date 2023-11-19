@@ -1,4 +1,7 @@
-+++ title = "Kstack seccon 2020" date = "2021-03-22" +++
++++
+title = "Kstack seccon 2020"
+date = "2021-03-22"
++++
 
 So this week, I came across yet another kernel exploitation challenge and the reason I'm documenting the writeup (even if there're plenty of better ones available) is simply because I had to use multiple race conditions to get kernel instruction pointer.
 

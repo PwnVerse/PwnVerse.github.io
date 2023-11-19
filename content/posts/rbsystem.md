@@ -1,7 +1,7 @@
 ---
 layout: "post"
 title: "Cyber Mimic 2020 Rbsystem Writeup"
-date: 2020-6-21
+date: 2020-06-21
 tags: [Heap, File Structures,CTF]
 ---
 

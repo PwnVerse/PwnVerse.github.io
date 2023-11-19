@@ -1,4 +1,7 @@
-+++ title = "Cyber Mimic 2020 emmm Writeup" date = "2020-6-21" +++
++++
+title = "Cyber Mimic 2020 emmm Writeup"
+date = "2020-06-21"
++++
 
 This is yet another challenge that we solved during this weekend's Cyber Mimic 2020 and the current post is supposedly the intended solution for this challenge.
 

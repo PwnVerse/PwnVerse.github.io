@@ -1,4 +1,7 @@
-+++ title = "Pwn2Win 2020 At Your Command Writeup" date = "2020-5-31" +++
++++ 
+title = "Pwn2Win 2020 At Your Command Writeup" 
+date = "2020-05-31"
++++
 
 We had a great time playing Pwn2Win CTF held this weekend. I spent most of my time in solving the challenge **At Your Command**.
 

@@ -1,7 +1,7 @@
 ---
 layout: "post"
 title: "Writeup for Simple Echo Server 0ctf 2020"
-date: 2020-7-02
+date: 2020-07-02
 tags: [Format Strings, CTF]
 ---
 
