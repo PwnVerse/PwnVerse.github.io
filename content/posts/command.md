@@ -1,5 +1,5 @@
-+++ 
-title = "Pwn2Win 2020 At Your Command Writeup" 
++++
+title = "Pwn2Win 2020 At Your Command Writeup"
 date = "2020-05-31"
 +++
 
