@@ -23,7 +23,7 @@ We really had a great time this weekend playing this year's edition of TokyoWest
 
 To begin with , we've been provided with the challenge binary , `libc 2.31`, a runner bash script and a folder containing Intel's tool called Control-flow Enforcement Technology (CET).This was our first tackel with Intel's CET and the concept involved is truly worth sharing. 
 
-```gdb
+```py
 gdb-peda$ checksec
 CANARY    : disabled
 FORTIFY   : ENABLED
@@ -142,7 +142,7 @@ if __name__ == "__main__":
 
 Remember that the shellcode has to be started with `endbr64` instruction to bypass the indirect branch instruction check.
 
-```console
+```sh
 [+] Opening connection to pwn01.chal.ctf.westerns.tokyo on port 29246: Done
 [!] Skipping debug attach since context.noptrace==True
 [*] stack = 0x7fffc7eb4d00
