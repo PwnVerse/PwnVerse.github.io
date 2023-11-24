@@ -1,0 +1,199 @@
+<!doctype html><html class="dark light"><head><meta charset=UTF-8><meta content="IE=edge" http-equiv=X-UA-Compatible><meta content="width=device-width,initial-scale=1.0" name=viewport><title>
+         Kernel Module Programming - 1
+        
+    </title><meta content="Kernel Module Programming - 1" property=og:title><link href=https://pwnverse.github.io/fonts.css rel=stylesheet><script>(function(){var a=document.createElement('script');a.setAttribute('src','/js/imamu.js');a.setAttribute('data-website-id','74344cd8-1e87-4c38-8acd-f96049b8f07e');a.setAttribute('data-host-url','https:&#x2F;&#x2F;analytics.eu.umami.is');document.body.appendChild(a)})()</script><script async data-host-url=https://analytics.eu.umami.is data-website-id=74344cd8-1e87-4c38-8acd-f96049b8f07e src=/js/imamu.js></script><script async data-goatcounter=https://Cyb0rG.goatcounter.com/count src=https://pwnverse.github.io/js/count.js></script><noscript><img src="https://Cyb0rG.goatcounter.com//count?p=/posts/kernelmodule/&t=Kernel Module Programming - 1"></noscript><link title="Cyb0rG's Home" href=https://pwnverse.github.io/atom.xml rel=alternate type=application/atom+xml><link href=https://pwnverse.github.io/theme/light.css rel=stylesheet><link href=https://pwnverse.github.io/theme/dark.css id=darkModeStyle rel=stylesheet><link href=https://pwnverse.github.io/main.css media=screen rel=stylesheet><body><div class=content><header><div class=main><a href=https://pwnverse.github.io>Cyb0rG's Home</a><div class=socials><a class=social href=https://twitter.com/_Cyb0rG rel=me> <img alt=twitter src=/social_icons/twitter.svg> </a><a class=social href=https://github.com/PwnVerse/ rel=me> <img alt=github src=/social_icons/github.svg> </a></div></div><nav><a href=/posts style=margin-left:.7em>/posts</a><a href=/projects style=margin-left:.7em>/projects</a><a href=/about style=margin-left:.7em>/about</a> | <a href=javascript:void(0) id=dark-mode-toggle onclick=toggleTheme()> <img id=sun-icon src=/feather/sun.svg style=filter:invert(1)> <img id=moon-icon src=/feather/moon.svg> </a><script src=https://pwnverse.github.io/js/themetoggle.js></script></nav></header><main><article><div class=title><div class=page-header>Kernel Module Programming - 1<span class=primary-color style=font-size:1.6em>.</span></div><div class=meta>Posted on <time>2020-08-27</time></div></div><section class=body><h1 id=intro-to-a-kernel-module>Intro to a kernel module</h1><p>Modules are pieces of code that can be loaded and unloaded into the kernel upon Demand. They extend the functionality of the kernel without needing to reboot the system.<p>Device Driver is also a kernel module. Without modules , we would have to build monolithic kernels and add new functionality directly into the kernel image.<h2 id=how-do-kernel-modules-get-into-kernel>How do kernel modules get into kernel</h2><p>When kernel needs a feature that is not present in the kernel , it runs <strong>kernel module daemon</strong> kmod execs <strong>modprobe</strong> to load the module in. modprobe is passed a string in one of two forms.<ol><li>A module name like <code>softdog</code> or <code>ppp</code>.<li>A more generic identifier like <code>char-major-10-30</code>.</ol><p>If generic identifiers have aliases , then modprobe knows what the identifier is referring to.<p>Next it has to checks for any dependencies that the module being loaded has , ie , whether it requires any pther modules to be loaded.<p>Lastly , modprobe uses <strong>insmod</strong> to first load the prerequisite modules into the kernel and finally the requested module. modprobe directs <strong>insmod</strong> to <strong>/lib/modules/version/</strong>.<p>insmod -> dumb about location of modules<p>modprobe -> aware of default location of modules , order of inserting modules etc.<p>modprobe knows all that as it parses <strong>/lib/modules/version/modules.dep</strong>. For the kernel , I'll be using the now latest linux kernel 5.8 to compile and insert my modules into.<h1 id=kernel-module-programming>Kernel Module Programming</h1><h2 id=hello-world>Hello World</h2><p>Kernel modules must have atleast 2 functions - <strong>init_module</strong> (called when the module is insmoded into the kernel) and <strong>cleanup_module</strong> called when the module is rmmoded.<pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span>
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/header.h> </span><span style=font-style:italic;color:#5c6773>/*Needed by all modules*/
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/kernel.h> </span><span style=font-style:italic;color:#5c6773>/* Needed for kernel_info */
+</span><span>
+</span><span style=color:#ff7733>int </span><span style=color:#ffb454>init_module</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>{
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO </span><span style=color:#c2d94c>"Hello World </span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>return </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>void </span><span style=color:#ffb454>cleanup_module</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>{
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO </span><span style=color:#c2d94c>"Goodbye</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span></code></pre><p>cleanup_module -> undoes whatever init_module did so that the module can be unloaded safely.<h2 id=printk>printk()</h2><p>It's not meant for communication with user , but for logging information or give warnings. Each printk() statement comes with a priority. There are 8 priorities and the kernel has macros for them, which are a part of <strong>linux/kernel.h</strong>. We use high priority printk <strong>KERN_ALERT</strong> to make printk() print to screen rather than just log to files.<h2 id=info-about-modules>Info about modules</h2><p>use <strong>modinfo</strong> to see information of a kernel object file.<p>Additional details of Makefiles for kernel modules are available at -> <code>Documentation/kbuild/makefiles.txt</code>.<p>All loaded modules are loaded into the kernel and listed in <strong>lsmod</strong> or <strong>cat /proc/modules</strong>.<ul><li>We can rename our init and cleanup modules with <strong>module_init()</strong> and <strong>module_exit</strong> macros defined in <em>linux/init.h</em>.</ul><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=font-style:italic;color:#5c6773>/* 
+</span><span style=font-style:italic;color:#5c6773> * hello2.c 
+</span><span style=font-style:italic;color:#5c6773>*/
+</span><span>
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/module.h>
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/kernel.h>
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/init.h>
+</span><span>
+</span><span style=color:#ff7733>static int</span><span> __init </span><span style=color:#ffb454>hello2_init</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>{
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"Hello world</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>return </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>static int</span><span> __init </span><span style=color:#ffb454>hello2_exit</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>{
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"Goodbye</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=color:#ffb454>module_init</span><span>(hello2_init)</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ffb454>module_exit</span><span>(hello2_exit)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span></code></pre><ul><li>The <code>__init</code> macro -> causes init function to be discarded and it's memory be freed once the init function finishes for built-in-drivers but not loadable modules.<li><code>__initdata</code> is for initialising data.<li><code>__exit</code> macro -> built-in-drivers dont require a cleanup function while loadable modules do.</ul><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span>
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/module.h>
+</span><span style=font-style:italic;color:#5c6773>/* Needed by all modules */
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/kernel.h>
+</span><span style=font-style:italic;color:#5c6773>/* Needed for KERN_INFO */
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/init.h>
+</span><span style=font-style:italic;color:#5c6773>/* Needed for the macros */
+</span><span>
+</span><span style=color:#ff7733>static int</span><span> hello3_data __initdata </span><span style=color:#f29668>= </span><span style=color:#f29718>3</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=color:#ff7733>static int</span><span> __init </span><span style=color:#ffb454>hello3_init</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>{
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"Hello world </span><span style=color:#f29718>%d</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span>hello3_data)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>return </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>static void</span><span> __exit </span><span style=color:#ffb454>hello3_exit</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>{
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"Goodbye</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=color:#ffb454>module_init</span><span>(hello3_init)</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ffb454>module_exit</span><span>(hello3_exit)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span></code></pre><h3 id=licensing-of-modules>Licensing of modules</h3><ul><li>MODULE_DESCRIPTION()<li>MODULE_AUTHOR()</ul><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/module.h>
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/kernel.h>
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/init.h>
+</span><span style=color:#ff7733>#define </span><span style=color:#59c2ff>DRIVER_AUTHOR </span><span style=color:#c2d94c>"Peter Jay Salzman &LTp@dirac.org>"
+</span><span style=color:#ff7733>#define </span><span style=color:#59c2ff>DRIVER_DESC </span><span style=color:#c2d94c>"A sample driver"
+</span><span>
+</span><span style=color:#ff7733>static int</span><span> __init </span><span style=color:#ffb454>init_hello4</span><span>()
+</span><span>{
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"hello</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>return </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>static void</span><span> __exit </span><span style=color:#ffb454>exit_hello4</span><span>()
+</span><span>{
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(</span><span style=color:#c2d94c>"KERN_INFO,"</span><span>goodbye\n</span><span style=color:#c2d94c>");
+</span><span style=color:#c2d94c>}
+</span><span style=color:#c2d94c>
+</span><span style=color:#c2d94c>module_init(init_hello4);
+</span><span style=color:#c2d94c>module_exit(exit_hello4);
+</span><span style=color:#c2d94c>
+</span><span style=color:#c2d94c>/* To get rid of taint messages */
+</span><span style=color:#c2d94c>
+</span><span style=color:#c2d94c>MODULE_LICENSE("</span><span>GP</span><span style=color:#ff7733>L</span><span style=color:#c2d94c>");
+</span><span style=color:#c2d94c>
+</span><span style=color:#c2d94c>// or
+</span><span style=color:#c2d94c>
+</span><span style=color:#c2d94c>MODULE_AUTHOR(DRIVER_AUTHOR);
+</span><span style=color:#c2d94c>MODULE_DESCRIPTION(DRIVER_DESC);
+</span><span style=color:#c2d94c>
+</span></code></pre><h3 id=passing-cmd-args-to-module>Passing cmd args to module</h3><p>Declare the variables that will take the args as global and then use <strong>module_param()</strong> macro.<pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span>
+</span><span style=font-style:italic;color:#5c6773>/*
+</span><span style=font-style:italic;color:#5c6773> * Demontrating command line arguments passing to a module
+</span><span style=font-style:italic;color:#5c6773> */
+</span><span>
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/kernel.h>
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/module.h>
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/init.h>
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/stat.h>
+</span><span style=color:#ff7733>#include </span><span style=color:#c2d94c>&LTlinux/moduleparam.h>
+</span><span>
+</span><span style=color:#ffb454>MODULE_LICENSE</span><span>(</span><span style=color:#c2d94c>"GPL"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ffb454>MODULE_AUTHOR</span><span>(</span><span style=color:#c2d94c>"Cyb0rG"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=color:#ff7733>static short int</span><span> myshort </span><span style=color:#f29668>= </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ff7733>static int</span><span> myint </span><span style=color:#f29668>= </span><span style=color:#f29718>123</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ff7733>static long int</span><span> mylong </span><span style=color:#f29668>= </span><span style=color:#f29718>4324324</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ff7733>static char</span><span style=color:#f29668>*</span><span> mystring </span><span style=color:#f29668>= </span><span style=color:#c2d94c>"bacdd"</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ff7733>static int</span><span> myinitArray[</span><span style=color:#f29718>2</span><span>] </span><span style=color:#f29668>= </span><span>{</span><span style=color:#f29668>-</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>, </span><span style=color:#f29668>-</span><span style=color:#f29718>1</span><span>}</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ff7733>static int</span><span> arr_argc </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=color:#ffb454>module_param</span><span>(myshort</span><span style=color:#bfbab0cc>, </span><span style=color:#ff7733>short</span><span style=color:#bfbab0cc>,</span><span> S_IUSR </span><span style=color:#f29668>|</span><span> S_IWSUR </span><span style=color:#f29668>|</span><span> S_IRGRP </span><span style=color:#f29668>|</span><span> S_IWGRP)</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ffb454>MODULE_PARAM_DESC</span><span>(myshort</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"A short integer"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ffb454>module_param</span><span>(myint</span><span style=color:#bfbab0cc>, </span><span style=color:#ff7733>int </span><span style=color:#bfbab0cc>,</span><span> S_IRUSR </span><span style=color:#f29668>|</span><span> S_IWUSR </span><span style=color:#f29668>|</span><span> S_IRGRP </span><span style=color:#f29668>|</span><span> S_IROTH)</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ffb454>MODULE_PARAM_DESC</span><span>(myint</span><span style=color:#bfbab0cc>, </span><span style=color:#c2d94c>"An integer"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ffb454>module_param</span><span>(mylong</span><span style=color:#bfbab0cc>, </span><span style=color:#ff7733>long</span><span style=color:#bfbab0cc>,</span><span> S_IRUSR)</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ffb454>MODULE_PARM_DESC</span><span>(mylong</span><span style=color:#bfbab0cc>, </span><span style=color:#c2d94c>"A long integer"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ffb454>module_param</span><span>(mystring</span><span style=color:#bfbab0cc>,</span><span> charp</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0000</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ffb454>MODULE_PARM_DESC</span><span>(mystring</span><span style=color:#bfbab0cc>, </span><span style=color:#c2d94c>"A character string"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>/* Description of module param array
+</span><span style=font-style:italic;color:#5c6773> * 
+</span><span style=font-style:italic;color:#5c6773> * module_param_array(name,type,num,perm)
+</span><span style=font-style:italic;color:#5c6773> * name -> array's name
+</span><span style=font-style:italic;color:#5c6773> * type -> data type of it's elements
+</span><span style=font-style:italic;color:#5c6773> * num  -> pointer to number of elements of array initialized by user at module load time
+</span><span style=font-style:italic;color:#5c6773> * perms -> permission bits
+</span><span style=font-style:italic;color:#5c6773> */
+</span><span>
+</span><span style=color:#ffb454>module_param_arrar</span><span>(myintArray</span><span style=color:#bfbab0cc>,</span><span style=color:#ff7733>int</span><span style=color:#bfbab0cc>,</span><span style=color:#f29668>&</span><span>arr_argc</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>0000</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ffb454>MODULE_PARAM_DESC</span><span>(myintArray</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"Array of Integers"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=color:#ff7733>static int</span><span> __init </span><span style=color:#ffb454>hello5_init</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>{
+</span><span>    </span><span style=color:#ff7733>int</span><span> i</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO </span><span style=color:#c2d94c>"Hello, world 5</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>=============</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO </span><span style=color:#c2d94c>"myshort is a short integer: </span><span style=color:#f29718>%hd</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span> myshort)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO </span><span style=color:#c2d94c>"myint is an integer: </span><span style=color:#f29718>%d</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span> myint)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO </span><span style=color:#c2d94c>"mylong is a long integer: </span><span style=color:#f29718>%ld</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span> mylong)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO </span><span style=color:#c2d94c>"mystring is a string: </span><span style=color:#f29718>%s</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span> mystring)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>for</span><span>(i </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;</span><span> i</span><span style=color:#f29668>< </span><span style=color:#ff7733>sizeof</span><span> myintArray</span><span style=color:#f29668>/ </span><span style=color:#ff7733>sizeof</span><span>(</span><span style=color:#ff7733>int</span><span>)</span><span style=color:#bfbab0cc>;</span><span> i</span><span style=color:#f29668>++</span><span>)
+</span><span>    {
+</span><span>        </span><span style=color:#ffb454>printk</span><span>(KERN_INFO</span><span style=color:#bfbab0cc>, </span><span style=color:#c2d94c>"myintArray[</span><span style=color:#f29718>%d</span><span style=color:#c2d94c>] = </span><span style=color:#f29718>%d</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span>i</span><span style=color:#bfbab0cc>,</span><span> myintArray[i])</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"got </span><span style=color:#f29718>%d</span><span style=color:#c2d94c> args for myintArray </span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span>arr_argc)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>return </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>static void</span><span> __exit </span><span style=color:#ffb454>hello5_exit</span><span>(</span><span style=color:#ff7733>void</span><span>)
+</span><span>{
+</span><span>    </span><span style=color:#ffb454>printk</span><span>(KERN_INFO</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"Goodbye"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=color:#ffb454>module_init</span><span>(hello5_init)</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ffb454>module_init</span><span>(hello5_exit)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span></code></pre><p>and finally, compiling all the hello-worlds , we can create a Makefile specifying the kernel source that we're gonna be compiling the modules for.<pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ffb454>ifneq </span><span>(${KERNELRELEASE}</span><span style=color:#bfbab0cc>,</span><span>)
+</span><span>obj</span><span style=color:#f29668>-</span><span>m </span><span style=color:#f29668>+=</span><span> helloworld</span><span style=color:#f29668>.</span><span>o
+</span><span>obj</span><span style=color:#f29668>-</span><span>m </span><span style=color:#f29668>+=</span><span> hello2</span><span style=color:#f29668>.</span><span>o
+</span><span>obj</span><span style=color:#f29668>-</span><span>m </span><span style=color:#f29668>+=</span><span> hello3</span><span style=color:#f29668>.</span><span>o
+</span><span>obj</span><span style=color:#f29668>-</span><span>m </span><span style=color:#f29668>+=</span><span> hello4</span><span style=color:#f29668>.</span><span>o
+</span><span>obj</span><span style=color:#f29668>-</span><span>m </span><span style=color:#f29668>+=</span><span> hello5</span><span style=color:#f29668>.</span><span>o
+</span><span># Assignment module here
+</span><span style=color:#ff7733>else
+</span><span>KERNEL_SOURCE </span><span style=color:#f29668>:= </span><span style=color:#ff3333>..</span><span style=color:#f29668>/</span><span>kernel_source</span><span style=color:#f29668>/</span><span>linux</span><span style=color:#f29668>-</span><span style=color:#f29718>4</span><span style=color:#bfbab0cc>.</span><span style=color:#f29718>18</span><span style=color:#bfbab0cc>.</span><span style=color:#f29718>16</span><span style=color:#f29668>/
+</span><span>PWD </span><span style=color:#f29668>:=</span><span> $(shell pwd)
+</span><span style=color:#ff7733>default</span><span style=color:#bfbab0cc>:
+</span><span>	# Compile </span><span style=color:#ff7733>for</span><span> the same architecture as the host machine
+</span><span>	$(MAKE) </span><span style=color:#f29668>-</span><span>C $(KERNEL_SOURCE) SUBDIRS</span><span style=color:#f29668>=</span><span>${PWD} modules
+</span><span>arm</span><span style=color:#f29668>:
+</span><span>	# Cross compile </span><span style=color:#ff7733>for</span><span> arm64</span><span style=color:#f29668>/</span><span>aarch64 architecture </span><span style=color:#f29668>-</span><span> Cross compiler needed </span><span style=color:#f29668>!!!  
+</span><span>	ARCH</span><span style=color:#f29668>=</span><span>arm64 CROSS_COMPILE</span><span style=color:#f29668>=</span><span>aarch64</span><span style=color:#f29668>-</span><span>linux</span><span style=color:#f29668>-</span><span>gnu</span><span style=color:#f29668>-</span><span> $(MAKE) </span><span style=color:#f29668>-</span><span>C $(KERNEL_SOURCE) SUBDIRS</span><span style=color:#f29668>=</span><span>${PWD} modules
+</span><span>clean</span><span style=color:#f29668>:
+</span><span># Cleans the Directory </span><span style=color:#f29668>-</span><span> removes all the files that were created
+</span><span>	$(MAKE) </span><span style=color:#f29668>-</span><span>C $(KERNEL_SOURCE) SUBDIRS</span><span style=color:#f29668>=</span><span>${PWD} clean
+</span><span>
+</span><span>endif
+</span><span>
+</span></code></pre><h2 id=compiling-the-custom-kernel-and-booting-into-it-with-qemu>Compiling the custom kernel and booting into it with qemu</h2><p>For now , I've compiled linux kernel 4.18 , which is condiderably old , but enough to run my modules.<p>Inside the source directory , we just have to do <strong>sudo make -j $(nproc)</strong> to compile the kernel for us. The <em>nproc</em> specifying the make process to run in multiple threads for faster compilation speeds.<p>Now comes the tricky part. To boot into the kernel , all you need is<ul><li>A kernel <strong>bzImage</strong> which is short for a compressed kernel image.<li>We'll also need a init directory which would run an <strong>init</strong> script for us to get our kernel to boot. This is where we copy our compiled modules and they get insmoded through the init script inside the rootfs.img.</ul><p>We can acquire a rootfs.img from any of the CTF challenges and work with it for now from <a href="https://drive.google.com/file/d/1kwOjYVNHyaplhzbKRZFJ_wcIuUwVKXwL/view?usp=sharing">here</a><h3 id=extracting-rootfs-img>Extracting rootfs.img</h3><pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=color:#ffb454>$</span><span> mkdir rootfs </span><span style=color:#f29668>&& </span><span style=color:#f07178>cd</span><span> rootfs
+</span><span style=color:#ffb454>$</span><span> cat ../rootfs.cpio </span><span style=color:#f29668>| </span><span style=color:#ffb454>cpio</span><span style=color:#f29718> --extract
+</span><span>
+</span></code></pre><p>Now you can copy your modules into the rootfs directory and pack it again into it's compresses <em>img</em> format.<p>Dont forget to edit the <strong>init</strong> script to insmod the modules that you've copied to the rootfds folder {: .notice}<h3 id=packing-rootfs-img>Packing rootfs.img</h3><p>From the directory <em>rootfs</em> that we created just a few moments ago , do<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=color:#ffb454>$</span><span> find . </span><span style=color:#f29668>| </span><span style=color:#ffb454>cpio</span><span style=color:#f29718> -o -H</span><span> newc </span><span style=color:#f29668>></span><span> ../rootfs.cpio
+</span><span style=color:#ffb454>$</span><span> cd ../ </span><span style=color:#f29668>&& </span><span style=color:#ffb454>rm</span><span style=color:#f29718> -dR</span><span> rootfs
+</span></code></pre><p>Now we're ready to boot into our newly compiled kernel with our modules loaded.<h3 id=booting-with-qemu>Booting with qemu</h3><p>From inside the kernel source directory, fire up qemu with appropriate paths for all arguments.<p>Make sure you specify the path of rootfs.img that we acquired just now. {: .notice}<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=font-style:italic;color:#5c6773>#!/bin/bash
+</span><span>
+</span><span style=color:#ffb454>qemu-system-x86_64 </span><span style=color:#bfbab0cc>\
+</span><span style=color:#f29718>    -kernel</span><span> arch/x86_64/boot/bzImage </span><span style=color:#bfbab0cc>\
+</span><span style=color:#f29718>    -nographic </span><span style=color:#bfbab0cc>\
+</span><span style=color:#f29718>    -append </span><span style=color:#c2d94c>"console=ttyS0" </span><span style=color:#bfbab0cc>\
+</span><span style=color:#f29718>    -initrd</span><span> rootfs.img </span><span style=color:#bfbab0cc>\
+</span><span style=color:#f29718>    -m</span><span> 512 </span><span style=color:#bfbab0cc>\
+</span><span style=color:#f29718>    --enable-kvm </span><span style=color:#bfbab0cc>\
+</span><span style=color:#f29718>    -cpu</span><span> host </span><span style=color:#bfbab0cc>\
+</span><span>
+</span></code></pre><p>This script should fire up our kernel , <strong>lsmod</strong> should successfully show our loaded modules and <strong>dsmg -r | tail -20</strong> should be sufficient to show the functionality of our loaded modules.<h3 id=no-headers-and-we-use-printk>No headers and we use printk??</h3><p>In the hello world example, you might have noticed that we used a function, printk() but didn't include a standard I/O library. That's because modules are object files whose symbols get resolved upon insmod'ing. The definition of these functions comes from the kernel itself.</section></article></main></div>

